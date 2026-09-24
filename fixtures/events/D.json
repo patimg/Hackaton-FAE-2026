@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "source": "gmail",
+  "source_account_id": "demo-gmail",
+  "external_message_id": "fixture-D",
+  "external_thread_id": null,
+  "occurred_at": "2026-09-24T14:00:00Z",
+  "sender": {
+    "display_name": "Carolina Pérez",
+    "email": "carolina@example.test",
+    "phone": null
+  },
+  "subject": null,
+  "text": "Necesito el logo para un pedido diferente.",
+  "attachments": [
+    {
+      "external_attachment_id": "fixture-D-attachment",
+      "file_field": "file_0",
+      "filename": "logo_nuevo.png",
+      "mime_type": "image/png",
+      "size_bytes": 79
+    }
+  ]
+}

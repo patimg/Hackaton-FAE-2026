@@ -1,0 +1,4 @@
+import Link from 'next/link';
+export default function Home() {
+  return <><h1>Documentos con contexto</h1><p className="muted">Un lugar para encontrar lo que cada cliente te envió.</p><div className="grid"><section className="card"><h2>Clientes</h2><p>Consulta sus datos e identidades de contacto.</p><Link href="/clients">Ver clientes</Link></section><section className="card"><h2>Documentos</h2><p>Consulta originales, clasificación y contexto de recepción.</p><Link href="/documents">Ver documentos</Link></section></div><section className="empty"><h2>Prueba el recorrido documental</h2><p>Envía un mensaje con adjuntos, abre el original y confirma los casos ambiguos.</p><Link href="/simulator">Abrir simulador</Link><p className="muted">La búsqueda natural y las integraciones externas siguen pendientes.</p></section></>;
+}

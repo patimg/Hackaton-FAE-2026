@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "source": "gmail",
+  "source_account_id": "demo-gmail",
+  "external_message_id": "fixture-B",
+  "external_thread_id": null,
+  "occurred_at": "2026-09-24T14:00:00Z",
+  "sender": {
+    "display_name": "Cliente Demo Transferencia",
+    "email": "transferencia@example.test",
+    "phone": null
+  },
+  "subject": null,
+  "text": "Adjunto el comprobante de la transferencia.",
+  "attachments": [
+    {
+      "external_attachment_id": "fixture-B-attachment",
+      "file_field": "file_0",
+      "filename": "comprobante.pdf",
+      "mime_type": "application/pdf",
+      "size_bytes": 613
+    }
+  ]
+}

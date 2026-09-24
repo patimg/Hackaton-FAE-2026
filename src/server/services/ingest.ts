@@ -1,0 +1,113 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { IngestResult } from '../../contracts/ingest';
+import type { ValidatedMessage } from '../files/validate';
+import { batchResultSchema, type AIProvider, type Classification } from '../providers/ai/provider';
+import type { FileStorage } from '../providers/storage/provider';
+import { getEventContext } from '../db/documents';
+import { folderFor } from '../files/folder';
+import { AppError } from '../errors';
+
+export type IngestDependencies = {
+  db:SupabaseClient; ai:AIProvider; storage:FileStorage; staging:FileStorage;
+  timezone:string; confidenceThreshold:number;
+};
+export async function ingestMessage(input:ValidatedMessage, context:{operatorId:string;origin:'simulator'}, deps:IngestDependencies) {
+  const {event,attachments} = input;
+  const reservation = await deps.db.rpc('begin_ingestion',{
+    p_event:event,p_sha256:input.payloadHash,p_email:input.email,p_phone:input.phone,p_actor:context.operatorId,
+    p_files:attachments.map(({bytes: _bytes,...file}) => { void _bytes; return file; }),
+  });
+  if (reservation.error) throw new AppError(reservation.error.code === '23505' ? 'IDENTITY_CHANGED' : 'DATABASE_UNAVAILABLE',
+    'No se pudo registrar el mensaje; no se inició su procesamiento.',reservation.error.code === '23505' ? 409 : 503);
+  const {event_id:eventId,created,conflict} = reservation.data as {event_id:string;created:boolean;conflict:boolean};
+  if (conflict) throw new AppError('EVENT_PAYLOAD_CONFLICT','Este ID ya se utilizó con contenido diferente.',409,eventId);
+  const saved = await getEventContext(deps.db,eventId);
+  const result = async ():Promise<IngestResult> => {
+    const current = await getEventContext(deps.db,eventId);
+    return {
+      event_id:eventId,status:'completed',duplicate:!created,interaction_id:current.interaction.id,
+      client:current.interaction.client ? {id:current.interaction.client.id,display_name:current.interaction.client.display_name} : null,
+      client_resolution:current.interaction.identity_resolution.resolution,
+      documents:current.documents.map(doc => ({id:doc.id,original_filename:doc.original_filename,category:doc.category,sha256:doc.sha256,
+        classification_status:doc.classification_status,storage_status:doc.storage_status,confidence:doc.confidence})),
+      warnings:[...new Set(current.documents.flatMap(doc => doc.review_reasons)),
+        ...(current.interaction.identity_status === 'conflict' ? ['IDENTITY_CONFLICT'] : []),
+        ...(current.interaction.identity_resolution.missing_identity ? ['MISSING_IDENTITY'] : [])],
+    };
+  };
+  if (!created) {
+    const existing = await deps.db.from('processed_events').select('status').eq('id',eventId).single();
+    if (existing.error) throw new AppError('DATABASE_UNAVAILABLE','No se pudo consultar el evento.',503,eventId);
+    if (existing.data.status === 'completed') return {httpStatus:200,result:await result()};
+    throw new AppError(existing.data.status === 'processing' ? 'EVENT_PROCESSING' : 'EVENT_PROCESSING_FAILED',
+      'El evento ya está registrado y no se volverá a procesar automáticamente. Revisa sus documentos; la recuperación está pendiente para fase 3.',409,eventId);
+  }
+  const updateDocument = async (id:string,values:Record<string,unknown>) => {
+    const {error} = await deps.db.from('documents').update(values).eq('id',id);
+    if (error) throw new AppError('DATABASE_UNAVAILABLE','No se pudo actualizar el documento.',503,eventId);
+  };
+  try {
+    // Staging durable antes de clasificación: una falla del proveedor no pierde los originales.
+    for (const doc of saved.documents) {
+      const file = attachments.find(item => item.external_attachment_id === doc.external_attachment_id)!;
+      const reserved = await deps.staging.reserve({documentId:doc.id,folderKey:eventId,filename:file.safe_filename});
+      await deps.staging.ensureStored({reservation:reserved,bytes:file.bytes,sha256:file.sha256});
+      await updateDocument(doc.id,{staging_key:reserved.key});
+    }
+    let classifications:Classification[];
+    let classifierFailed = false;
+    try {
+      const output = batchResultSchema.parse(await deps.ai.classifyDocuments({text:event.text,subject:event.subject,
+        documents:saved.documents.map(doc => {
+          const file = attachments.find(item => item.external_attachment_id === doc.external_attachment_id)!;
+          return {document_id:doc.id,filename:doc.original_filename,mime_type:doc.mime_type,
+            text:doc.mime_type === 'text/plain' ? file.bytes.toString('utf8').slice(0,8000) : null};
+        }),
+      }));
+      const ids = new Set(output.results.map(item => item.document_id));
+      if (ids.size !== saved.documents.length || output.results.length !== saved.documents.length || saved.documents.some(doc => !ids.has(doc.id))) throw new Error('IDs de clasificación inválidos');
+      classifications = output.results;
+    } catch {
+      classifierFailed = true;
+      classifications = saved.documents.map(doc => ({document_id:doc.id,category:'otro',summary:'Clasificación no disponible; original conservado.',
+        tags:[],confidence:0,reason:'El clasificador falló o entregó un resultado inválido. Se requiere revisión manual.'}));
+    }
+    let storageFailed = false;
+    for (const doc of saved.documents) {
+      const file = attachments.find(item => item.external_attachment_id === doc.external_attachment_id)!;
+      const classification = classifications.find(item => item.document_id === doc.id)!;
+      const reasons = [
+        ...(classifierFailed ? ['CLASSIFIER_FAILED'] : []),
+        ...(classification.category === 'otro' || classification.confidence < deps.confidenceThreshold ? ['LOW_CONFIDENCE'] : []),
+        ...(saved.interaction.identity_status === 'conflict' ? ['IDENTITY_CONFLICT'] : []),
+        ...(saved.interaction.identity_resolution.missing_identity ? ['MISSING_IDENTITY'] : []),
+      ];
+      const folderKey = folderFor({clientFolder:saved.interaction.client?.folder_name || null,receivedAt:saved.interaction.received_at,
+        timezone:deps.timezone,category:classification.category,needsReview:reasons.length>0});
+      await updateDocument(doc.id,{category:classification.category,suggested_category:classification.category,
+        summary:classification.summary,tags:classification.tags,confidence:classification.confidence,
+        classification_status:reasons.length ? 'needs_review' : 'classified',review_reasons:reasons,
+        classification_evidence:classification,ai_provider:'deterministic',ai_model:null,prompt_version:'rules-v1',
+        extracted_text:doc.mime_type === 'text/plain' ? file.bytes.toString('utf8').slice(0,8000) : null,
+        extraction_status:doc.mime_type === 'text/plain' ? 'ok' : 'unsupported',desired_folder_key:folderKey});
+      try {
+        const reserved = await deps.storage.reserve({documentId:doc.id,folderKey,filename:file.safe_filename});
+        await deps.storage.ensureStored({reservation:reserved,bytes:file.bytes,sha256:file.sha256});
+        await updateDocument(doc.id,{storage_key:reserved.key,stored_folder_key:reserved.folderKey,storage_status:'stored'});
+      } catch {
+        storageFailed = true;
+        await updateDocument(doc.id,{storage_status:'failed'});
+      }
+    }
+    if (storageFailed) throw new AppError('STORAGE_FAILED','No se pudieron guardar todos los archivos. Los originales recibidos están en staging y el evento requiere atención.',503,eventId);
+    const complete = await result();
+    const {error} = await deps.db.from('processed_events').update({status:'completed',completed_at:new Date().toISOString(),result_summary:complete}).eq('id',eventId);
+    if (error) throw new AppError('DATABASE_UNAVAILABLE','Los archivos se procesaron pero no se pudo confirmar el evento.',503,eventId);
+    return {httpStatus:201,result:complete};
+  } catch (error) {
+    await deps.db.from('processed_events').update({status:'failed',last_error_code:error instanceof AppError ? error.code : 'PROCESSING_FAILED',
+      last_error_summary:'Procesamiento incompleto; revisar el evento. No se eliminaron archivos.'}).eq('id',eventId);
+    if (error instanceof AppError) throw error;
+    throw new AppError('PROCESSING_FAILED','No se pudo completar el evento. Se conserva el avance; no se reintenta automáticamente.',503,eventId);
+  }
+}
