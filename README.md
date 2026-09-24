@@ -1,4 +1,4 @@
-# Archivo · MVP documental FAE
+# Hackaton-FAE-2026 · Archivo documental
 
 Aplicación Next.js/TypeScript con Supabase/PostgreSQL y Auth reales. La fase 2 implementa el recorrido **simulador → ingestión → cliente → interacción → documento → clasificación determinista → archivo local → consulta/descarga → revisión**. Resultados verificables en [PHASE2_VERIFICATION.md](docs/PHASE2_VERIFICATION.md); historial de fase 1 en [VERIFICATION.md](docs/VERIFICATION.md).
 
