@@ -8,7 +8,10 @@ async function main() {
   loadLocalEnv();
   if (process.env.APP_MODE && process.env.APP_MODE !== 'demo') throw new Error('El setup solo se permite en modo demo.');
   if (process.env.SUPABASE_URL) requireLocalUrl(process.env.SUPABASE_URL, 'SUPABASE_URL');
-  const status = JSON.parse(execFileSync('node_modules/.bin/supabase', ['status', '-o', 'json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })) as Record<string,string>;
+  const supabaseCommand = process.platform === 'win32'
+    ? [process.execPath, 'node_modules/supabase/dist/supabase.js']
+    : ['node_modules/.bin/supabase'];
+  const status = JSON.parse(execFileSync(supabaseCommand[0], [...supabaseCommand.slice(1), 'status', '-o', 'json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })) as Record<string,string>;
   const url = requireLocalUrl(status.API_URL, 'API_URL');
   const dbUrl = requireLocalUrl(status.DB_URL, 'DB_URL');
   const publicKey = status.PUBLISHABLE_KEY || status.ANON_KEY;

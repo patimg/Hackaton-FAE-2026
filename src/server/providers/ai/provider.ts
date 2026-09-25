@@ -14,6 +14,12 @@ export const searchPlanSchema = z.strictObject({
 export type SearchPlan = z.infer<typeof searchPlanSchema>;
 export type SearchInput = { query:string; today:string; timezone:string };
 export type AIProviderInfo = { kind:'deterministic'|'ai'; provider:string; model:string|null; promptVersion:string };
-export interface AIProvider { readonly info:AIProviderInfo; classifyDocument(input:ClassificationInput):Promise<Classification>; interpretSearchQuery(input:SearchInput):Promise<SearchPlan>; }
+export interface AIProvider {
+  readonly info:AIProviderInfo;
+  classifyDocument(input:ClassificationInput):Promise<Classification>;
+  interpretSearchQuery(input:SearchInput):Promise<SearchPlan>;
+  classifyDocuments(input:{text:string;subject:string|null;documents:{document_id:string;filename:string;mime_type:string;text:string|null}[]}):Promise<{schema_version:'1';results:Classification[]}>;
+  interpretSearch(input:{query:string}):Promise<{schema_version:'1';terms:string[];mode:'lexical'}>;
+}
 // Compatibilidad de transición para tests/adaptadores de la fase 2.
 export type LegacyAIProvider = { classifyDocuments(input:{text:string;subject:string|null;documents:{document_id:string;filename:string;mime_type:string;text:string|null}[]}):Promise<{schema_version:'1';results:Classification[]}>; interpretSearch(input:{query:string}):Promise<{schema_version:'1';terms:string[];mode:'lexical'}> };
