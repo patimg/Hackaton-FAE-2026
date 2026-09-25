@@ -1,5 +1,9 @@
 # Registro de decisiones
 
+## D18 — IA real aislada y búsqueda parametrizada
+
+`AIProvider` expone clasificación e interpretación de búsqueda. El adaptador OpenAI-compatible se configura solo en servidor por `AI_BASE_URL`, `AI_MODEL` y `AI_API_KEY`; demo conserva el proveedor determinista. Live sin configuración falla explícitamente. SearchPlan se valida con Zod y `search_documents` es SQL estático con parámetros; el modelo nunca genera SQL, permisos ni rutas. Ante fallo hay búsqueda textual visible y nombres ambiguos requieren selección humana.
+
 Fecha: 2026-09-23. Estado: arquitectura general **aprobada por el equipo**; fase 1 autorizada. La aprobación no implica que las fases posteriores estén implementadas. Las decisiones derivadas directamente del encargo se identifican como requisito. El plan se encuentra en [PLAN.md](PLAN.md) y los contratos en [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## D01 — Una aplicación full-stack y módulos pequeños

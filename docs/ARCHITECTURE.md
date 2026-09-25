@@ -1,5 +1,7 @@
 # Arquitectura propuesta del MVP
 
+> Actualización: AIProvider queda limitado a `classifyDocument` e `interpretSearchQuery`; SearchService valida SearchPlan y ejecuta `search_documents` con parámetros. Ningún LLM recibe permisos ni ejecuta SQL.
+
 Estado: arquitectura general aprobada; implementación gradual según PLAN.md y ajustes aprobados en DECISIONS.md. Fecha: 2026-09-23.
 
 ## Corte implementado al 2026-09-24

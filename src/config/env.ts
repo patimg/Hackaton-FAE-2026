@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isSupportedCountry } from "libphonenumber-js";
+const optionalValue = z.preprocess(value => value === '' ? undefined : value, z.string().min(1).optional());
 
 export const envSchema = z.object({
   APP_MODE: z.enum(["demo", "live"]).default("demo"),
@@ -11,7 +12,11 @@ export const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   OPERATOR_USER_ID: z.uuid(),
   STORAGE_PROVIDER: z.enum(["local", "google-drive"]).default("local"),
-  AI_PROVIDER: z.string().default("deterministic"),
+  AI_PROVIDER: z.enum(["deterministic", "openai"]).default("deterministic"),
+  AI_MODEL: optionalValue,
+  AI_API_KEY: optionalValue,
+  AI_BASE_URL: z.url().default("https://api.openai.com/v1"),
+  AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(10000),
   LOCAL_FILES_DIR: z.string().min(1).default("./.data/files"),
   STAGING_DIR: z.string().min(1).default("./.data/staging"),
   MAX_FILES_PER_MESSAGE: z.coerce.number().int().min(1).max(20).default(5),
@@ -40,6 +45,8 @@ export const envSchema = z.object({
       ctx.addIssue({ code: 'custom', path: ['APP_MODE'], message: 'Demo requiere proveedores locales' });
     }
   }
+  if (env.APP_MODE === 'live' && env.AI_PROVIDER !== 'openai') ctx.addIssue({ code:'custom', path:['AI_PROVIDER'], message:'Live requiere un proveedor de IA real configurado' });
+  if (env.AI_PROVIDER === 'openai' && (!env.AI_API_KEY || !env.AI_MODEL)) ctx.addIssue({ code:'custom', path:['AI_API_KEY'], message:'AI_PROVIDER=openai requiere AI_API_KEY y AI_MODEL solo en servidor' });
   try { new Intl.DateTimeFormat('es-CL', { timeZone: env.APP_TIMEZONE }); }
   catch { ctx.addIssue({ code: 'custom', path: ['APP_TIMEZONE'], message: 'Zona horaria inválida' }); }
 });

@@ -1,5 +1,7 @@
 # Hackaton-FAE-2026 · Archivo documental
 
+> Fase IA/búsqueda: AIProvider permite modo determinista u OpenAI-compatible solo en servidor. `/search` valida SearchPlan y llama SQL parametrizado; no hay SQL generado por LLM ni fallback live silencioso. Datos enviados: filename, MIME, mensaje, asunto, canal, cliente mínimo y TXT ya extraído; nunca binarios, historial ni secretos.
+
 Aplicación Next.js/TypeScript con Supabase/PostgreSQL y Auth reales. La fase 2 implementa el recorrido **simulador → ingestión → cliente → interacción → documento → clasificación determinista → archivo local → consulta/descarga → revisión**. Resultados verificables en [PHASE2_VERIFICATION.md](docs/PHASE2_VERIFICATION.md); historial de fase 1 en [VERIFICATION.md](docs/VERIFICATION.md).
 
 ## Arrancar

@@ -15,6 +15,7 @@ export type Document = {
   tags:string[]; confidence:number|null; classification_status:string; storage_status:string; storage_provider:string;
   storage_key:string|null; staging_key:string|null; desired_folder_key:string|null; stored_folder_key:string|null;
   review_reasons:string[]; classification_evidence:{reason?:string;category?:string;confidence?:number};
+  ai_provider:string|null; ai_model:string|null; prompt_version:string|null;
   version:number; reviewed_at:string|null; created_at:string; interaction:Interaction;
 };
 export const interactionSelect = '*,client:clients!interactions_client_id_fkey(id,display_name,folder_name)';

@@ -1,5 +1,7 @@
 # Plan de ejecución y aceptación
 
+> Actualización: búsqueda de fase 4 e interfaz/adaptador de IA de fase 5 implementados, pendientes de validación local. Drive y canales reales continúan pendientes.
+
 Estado: fases 1 y 2 completadas y verificadas; resultados de verificación en VERIFICATION.md y PHASE2_VERIFICATION.md. Fases 3–7 pendientes, salvo capacidades básicas adelantadas por petición expresa del equipo.
 
 La arquitectura y los contratos están en [ARCHITECTURE.md](ARCHITECTURE.md); las razones y alternativas en [DECISIONS.md](DECISIONS.md). Las fases se ordenan para obtener un recorrido funcional local antes de depender de servicios externos. No se fija una duración sin conocer equipo ni horas disponibles.
