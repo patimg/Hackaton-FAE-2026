@@ -14,6 +14,7 @@ export type Document = {
   mime_type:string; size_bytes:number; sha256:string; category:DocumentCategory; summary:string|null;
   tags:string[]; confidence:number|null; classification_status:string; storage_status:string; storage_provider:string;
   storage_key:string|null; staging_key:string|null; desired_folder_key:string|null; stored_folder_key:string|null;
+  drive_file_id:string|null;
   review_reasons:string[]; classification_evidence:{reason?:string;category?:string;confidence?:number};
   ai_provider:string|null; ai_model:string|null; prompt_version:string|null;
   version:number; reviewed_at:string|null; created_at:string; interaction:Interaction;

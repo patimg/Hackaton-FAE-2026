@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isSupportedCountry } from "libphonenumber-js";
 const optionalValue = z.preprocess(value => value === '' ? undefined : value, z.string().min(1).optional());
+const optionalUrl = z.preprocess(value => value === '' ? undefined : value, z.url().optional());
 
 export const envSchema = z.object({
   APP_MODE: z.enum(["demo", "live"]).default("demo"),
@@ -12,6 +13,11 @@ export const envSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   OPERATOR_USER_ID: z.uuid(),
   STORAGE_PROVIDER: z.enum(["local", "google-drive"]).default("local"),
+  GMAIL_USER: z.email().optional(),
+  GMAIL_POLL_INTERVAL_MS: z.coerce.number().int().min(1000).max(86400000).default(30000),
+  INGEST_API_TOKEN: optionalValue,
+  WHATSAPP_AUTH_DIR: z.string().min(1).default("./.data/whatsapp-auth"),
+  WHATSAPP_BACKEND_URL: optionalUrl,
   AI_PROVIDER: z.enum(["deterministic", "openai"]).default("deterministic"),
   AI_MODEL: optionalValue,
   AI_API_KEY: optionalValue,
@@ -19,11 +25,18 @@ export const envSchema = z.object({
   AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(10000),
   LOCAL_FILES_DIR: z.string().min(1).default("./.data/files"),
   STAGING_DIR: z.string().min(1).default("./.data/staging"),
+  GOOGLE_DRIVE_ROOT_FOLDER_ID: optionalValue,
   MAX_FILES_PER_MESSAGE: z.coerce.number().int().min(1).max(20).default(5),
   MAX_FILE_BYTES: z.coerce.number().int().positive().max(50 * 1024 * 1024).default(5242880),
   MAX_TOTAL_ATTACHMENT_BYTES: z.coerce.number().int().positive().max(100 * 1024 * 1024).default(15728640),
   MAX_REQUEST_BYTES: z.coerce.number().int().positive().max(110 * 1024 * 1024).default(16777216),
   CLASSIFICATION_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.80),
+  GOOGLE_CLIENT_ID: optionalValue,
+  GOOGLE_CLIENT_SECRET: optionalValue,
+  GOOGLE_REFRESH_TOKEN: optionalValue,
+  GMAIL_ACCOUNT_ID: optionalValue,
+  GMAIL_QUERY: z.string().default('is:unread'),
+  GMAIL_MAX_MESSAGES: z.coerce.number().int().min(1).max(100).default(25),
 }).superRefine((env, ctx) => {
   if (env.MAX_FILE_BYTES > env.MAX_TOTAL_ATTACHMENT_BYTES || env.MAX_TOTAL_ATTACHMENT_BYTES >= env.MAX_REQUEST_BYTES) {
     ctx.addIssue({ code:'custom', path:['MAX_REQUEST_BYTES'], message:'Límites de archivo/total/request incoherentes' });
@@ -46,6 +59,9 @@ export const envSchema = z.object({
     }
   }
   if (env.APP_MODE === 'live' && env.AI_PROVIDER !== 'openai') ctx.addIssue({ code:'custom', path:['AI_PROVIDER'], message:'Live requiere un proveedor de IA real configurado' });
+  if (env.STORAGE_PROVIDER === 'google-drive' && (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN || !env.GOOGLE_DRIVE_ROOT_FOLDER_ID)) {
+    ctx.addIssue({ code:'custom', path:['STORAGE_PROVIDER'], message:'Google Drive requiere credenciales OAuth y carpeta raíz' });
+  }
   if (env.AI_PROVIDER === 'openai' && (!env.AI_API_KEY || !env.AI_MODEL)) ctx.addIssue({ code:'custom', path:['AI_API_KEY'], message:'AI_PROVIDER=openai requiere AI_API_KEY y AI_MODEL solo en servidor' });
   try { new Intl.DateTimeFormat('es-CL', { timeZone: env.APP_TIMEZONE }); }
   catch { ctx.addIssue({ code: 'custom', path: ['APP_TIMEZONE'], message: 'Zona horaria inválida' }); }

@@ -1,4 +1,4 @@
-export type StorageReservation = { provider:'local'; key:string; folderKey:string };
+export type StorageReservation = { provider:'local'|'google-drive'; key:string; folderKey:string; fileId?:string };
 export type StorageReservationInput = { documentId:string; folderKey:string; filename:string };
 export interface FileStorage {
   reserve(input:StorageReservationInput): Promise<StorageReservation>;
