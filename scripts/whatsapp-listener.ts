@@ -1,7 +1,9 @@
 import { mkdir } from 'node:fs/promises';
+import { GoogleDriveStorage } from '../src/server/providers/storage/google-drive';
 import { loadLocalEnv } from './local-env';
 loadLocalEnv();
-import { createServerClient } from '@supabase/ssr';
+import { incomingEventSchema } from '../src/contracts/ingest';
+import { normalizePhoneIfValid } from '../src/domain/identity';
 import {
   Browsers,
   DisconnectReason,
@@ -16,36 +18,16 @@ import pino from 'pino';
 import qrcode from 'qrcode-terminal';
 
 const authDirectory = process.env.WHATSAPP_AUTH_DIR || '.data/whatsapp-auth';
-const accountId = process.env.WHATSAPP_SOURCE_ACCOUNT_ID || 'demo-whatsapp';
 const baseUrl = (process.env.APP_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
 const ingestUrl = process.env.WHATSAPP_INGEST_URL || `${baseUrl}/api/v1/ingest`;
 const ingestToken = process.env.INGEST_API_TOKEN;
-const email = process.env.WHATSAPP_INGEST_EMAIL || process.env.DEMO_AUTH_EMAIL;
-const password = process.env.WHATSAPP_INGEST_PASSWORD || process.env.DEMO_AUTH_PASSWORD;
-
-type CookieStore = Map<string, string>;
 
 function requireCredentials() {
-  if (!email || !password) throw new Error('Configura WHATSAPP_INGEST_EMAIL y WHATSAPP_INGEST_PASSWORD.');
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_PUBLISHABLE_KEY) {
-    throw new Error('Configura SUPABASE_URL y SUPABASE_PUBLISHABLE_KEY para autenticar la ingestión.');
+  if (!ingestToken) throw new Error('Configura INGEST_API_TOKEN para autenticar el conector de WhatsApp.');
+  const configuredAccountId = process.env.WHATSAPP_SOURCE_ACCOUNT_ID?.trim();
+  if (configuredAccountId && !/^\+?\d{3,20}$/.test(configuredAccountId)) {
+    throw new Error('WHATSAPP_SOURCE_ACCOUNT_ID debe ser un número real en formato internacional.');
   }
-}
-
-async function authenticationCookie(): Promise<string> {
-  if (ingestToken) return '';
-  requireCredentials();
-  const cookies: CookieStore = new Map();
-  const client = createServerClient(process.env.SUPABASE_URL!, process.env.SUPABASE_PUBLISHABLE_KEY!, {
-    cookies: {
-      getAll: () => [...cookies].map(([name, value]) => ({ name, value })),
-      setAll: items => items.forEach(({ name, value }) => cookies.set(name, value)),
-    },
-    cookieOptions: { secure: baseUrl.startsWith('https:') },
-  });
-  const { error } = await client.auth.signInWithPassword({ email: email!, password: password! });
-  if (error) throw new Error('No se pudo autenticar la cuenta de ingestión.');
-  return [...cookies].map(([name, value]) => `${name}=${value}`).join('; ');
 }
 
 function unwrapMessage(message: WAMessage) {
@@ -68,7 +50,20 @@ function messageText(message: WAMessage): string {
 function senderPhone(message: WAMessage): string | null {
   const jid = message.key.participant || message.key.remoteJid || '';
   const number = jid.split('@')[0].split(':')[0];
-  return /^\d{3,20}$/.test(number) ? `+${number}` : null;
+  if (!/^\d{3,20}$/.test(number)) return null;
+  const phone = normalizePhoneIfValid(`+${number}`, process.env.DEFAULT_PHONE_COUNTRY || 'CL');
+  if (!phone) console.warn('El remitente no tiene un número telefónico verificable; se guardará como cliente provisional.');
+  return phone;
+}
+
+function sourceAccountId(socket: ReturnType<typeof makeWASocket>): string {
+  const configured = process.env.WHATSAPP_SOURCE_ACCOUNT_ID?.trim();
+  if (configured) return configured;
+  const number = socket.user?.id.split('@')[0].split(':')[0];
+  if (!number || !/^\d{3,20}$/.test(number)) {
+    throw new Error('No se pudo determinar el número de la cuenta conectada de WhatsApp.');
+  }
+  return `+${number}`;
 }
 
 async function createForm(message: WAMessage, socket: ReturnType<typeof makeWASocket>) {
@@ -95,7 +90,7 @@ async function createForm(message: WAMessage, socket: ReturnType<typeof makeWASo
       attachments.push({
         external_attachment_id: `${message.key.id || 'message'}:media`,
         file_field: field,
-        filename,
+        filename: filename.slice(0, 255),
         mime_type: mime,
         size_bytes: bytes.length,
       });
@@ -104,40 +99,61 @@ async function createForm(message: WAMessage, socket: ReturnType<typeof makeWASo
       console.warn(`Adjunto omitido: MIME no admitido (${mime || 'desconocido'}).`);
     }
   }
+  const text = messageText(message).slice(0, 10000);
+  if (!text.trim() && attachments.length === 0) return null;
   const remoteJid = message.key.remoteJid || 'unknown';
   const event = {
     schema_version: '1' as const,
     source: 'whatsapp' as const,
-    source_account_id: accountId,
+    source_account_id: sourceAccountId(socket),
     external_message_id: message.key.id || `${remoteJid}:${message.messageTimestamp || Date.now()}`,
     external_thread_id: remoteJid,
     occurred_at: new Date(Number(message.messageTimestamp || Math.floor(Date.now() / 1000)) * 1000).toISOString(),
-    sender: { display_name: message.pushName || null, email: null, phone: senderPhone(message) },
+    sender: { display_name: message.pushName?.slice(0, 150) || null, email: null, phone: senderPhone(message) },
     subject: null,
-    text: messageText(message),
+    text,
     attachments,
   };
-  return { event, files };
+  const validation = incomingEventSchema.safeParse(event);
+  if (!validation.success) {
+    const fields = [...new Set(validation.error.issues.map(issue => issue.path.join('.') || 'event'))];
+    throw new Error(`WhatsApp produjo un evento inválido (${fields.join(', ')}).`);
+  }
+  return { event: validation.data, files };
 }
 
-async function dispatch(message: WAMessage, socket: ReturnType<typeof makeWASocket>, cookie: string) {
-  const { event, files } = await createForm(message, socket);
-  if (!event.text.trim() && files.length === 0) return;
+async function dispatch(message: WAMessage, socket: ReturnType<typeof makeWASocket>) {
+  const payload = await createForm(message, socket);
+  if (!payload) {
+    console.info('Mensaje omitido: no contiene texto ni archivos compatibles.');
+    return;
+  }
+  const { event, files } = payload;
   const form = new FormData();
   form.set('event', JSON.stringify(event));
   for (const file of files) form.append(file.field, new Blob([new Uint8Array(file.bytes)], { type: file.type }), file.name);
   const response = await fetch(ingestUrl, {
     method: 'POST',
-    headers: { ...(ingestToken ? { Authorization: `Bearer ${ingestToken}` } : {}), Cookie: cookie, Origin: baseUrl },
+    headers: { Authorization: ['Bearer', ingestToken].join(' '), Origin: baseUrl },
     body: form,
   });
-  if (!response.ok) throw new Error(`Ingestión rechazada (${response.status}).`);
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Ingestión rechazada (${response.status})${body ? `: ${body.slice(0, 500)}` : '.'}`);
+  }
   console.info(`Mensaje procesado: ${event.external_message_id}.`);
 }
 
 async function run() {
+  requireCredentials();
+  const driveStorage = new GoogleDriveStorage({
+    clientId:process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret:process.env.GOOGLE_CLIENT_SECRET || '',
+    refreshToken:process.env.GOOGLE_REFRESH_TOKEN || '',
+    rootFolderId:process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID || '',
+  });
+  await driveStorage.assertReady();
   await mkdir(authDirectory, { recursive: true });
-  let cookie = await authenticationCookie();
   const { state, saveCreds } = await loadAuthState(authDirectory);
   const { version } = await fetchLatestBaileysVersion();
   const socket = makeWASocket({
@@ -166,15 +182,8 @@ async function run() {
     if (type !== 'notify') return;
     for (const message of messages) {
       if (message.key.fromMe || !message.message) continue;
-      try { await dispatch(message, socket, cookie); }
-      catch (error) {
-        if (error instanceof Error && error.message.includes('(401)')) {
-          cookie = await authenticationCookie();
-          try { await dispatch(message, socket, cookie); } catch (retryError) {
-            console.error(retryError instanceof Error ? retryError.message : 'Falló la ingestión.');
-          }
-        } else console.error(error instanceof Error ? error.message : 'Falló la ingestión.');
-      }
+      try { await dispatch(message, socket); }
+      catch (error) { console.error(error instanceof Error ? error.message : 'Falló la ingestión.'); }
     }
   });
 }

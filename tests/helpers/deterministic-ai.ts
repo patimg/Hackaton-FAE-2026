@@ -1,5 +1,5 @@
-import type { AIProvider, Classification, ClassificationInput, SearchInput, SearchPlan } from './provider';
-import type { DocumentCategory } from '../../../domain/documents';
+import type { AIProvider, Classification, ClassificationInput, SearchInput, SearchPlan } from '../../src/server/providers/ai/provider';
+import type { DocumentCategory } from '../../src/domain/documents';
 const normalize=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const rules:{category:DocumentCategory;expression:RegExp;tags:string[]}[]=[
   {category:'comprobante_pago',expression:/\b(comprobante|transferencia|deposito|pago realizado)\b/,tags:['pago']},
@@ -9,13 +9,13 @@ const rules:{category:DocumentCategory;expression:RegExp;tags:string[]}[]=[
   {category:'referencia',expression:/\b(ejemplo de referencia|como referencia|referencia para|inspiracion)\b/,tags:['referencia']},
 ];
 export class DeterministicAIProvider implements AIProvider {
-  readonly info={kind:'deterministic' as const,provider:'deterministic',model:null,promptVersion:'rules-v2'};
+  readonly info={kind:'ai' as const,provider:'deterministic-test',model:null,promptVersion:'rules-v2'};
   async classifyDocument(document:ClassificationInput):Promise<Classification> {
     const rawContext=normalize(`${document.subject||''} ${document.message_text} ${document.document_text||''}`);
     // Un mensaje que intenta dar órdenes al clasificador no cuenta como evidencia documental.
     const context=/ignora.*instrucciones|clasifica.*todos.*archivos/.test(rawContext)?normalize(`${document.subject||''} ${document.document_text||''}`):rawContext;const matches=rules.filter(rule=>rule.expression.test(context));
     const nameMatches=matches.filter(rule=>rule.expression.test(normalize(document.filename).replace(/[^a-z0-9]+/g,' ')));const match=matches.length===1?matches[0]:nameMatches.length===1?nameMatches[0]:undefined;
-    return {document_id:document.document_id,category:match?.category||'otro',summary:match?`Documento ${match.category.replaceAll('_',' ')} recibido: ${document.filename}`:`Archivo sin contexto suficiente: ${document.filename}`,tags:match?.tags||[],confidence:match?0.92:0.25,reason:match?'Regla determinista: el contexto contiene una referencia explícita a esta categoría.':'Clasificación simulada: el nombre del archivo no basta y el mensaje es ambiguo.'};
+    return {document_id:document.document_id,category:match?.category||'otro',summary:match?`Documento ${match.category.replaceAll('_',' ')} recibido: ${document.filename}`:`Archivo sin contexto suficiente: ${document.filename}`,tags:match?.tags||[],confidence:match?0.92:0.25,reason:match?'Regla determinista de prueba: el contexto contiene una referencia explícita a esta categoría.':'El nombre del archivo no basta y el mensaje es ambiguo.'};
   }
   async interpretSearchQuery(input:SearchInput):Promise<SearchPlan> {
     const query=input.query.trim(),normal=normalize(query);const category=rules.find(rule=>rule.expression.test(normal))?.category||null;const clientName=query.match(/\b(?:de|del|para)\s+([A-ZÁÉÍÓÚÑ][\p{L}'-]*(?:\s+[A-ZÁÉÍÓÚÑ][\p{L}'-]*)?)/u)?.[1]||null;

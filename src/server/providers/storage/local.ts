@@ -1,4 +1,4 @@
-import { mkdir, open, realpath, lstat } from 'node:fs/promises';
+import { mkdir, open, realpath, lstat, rmdir, unlink } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { resolve, relative, dirname, sep } from 'node:path';
 import { sha256 } from '../../files/validate';
@@ -13,6 +13,12 @@ export class LocalFileStorage implements FileStorage {
   constructor(root:string) {
     this.root = resolve(root);
     if (inside(resolve('public'),this.root)) throw new Error('El almacenamiento debe estar fuera de public.');
+  }
+  async assertReady() {
+    await mkdir(this.root,{recursive:true,mode:0o700});
+    const actualRoot = await realpath(this.root);
+    if (!inside(resolve('public'),actualRoot)) return;
+    throw new Error('La raíz de almacenamiento no puede estar dentro de public.');
   }
   private async path(key:string, create:boolean) {
     if (!key || key.split('/').some(part => !part || part === '.' || part === '..') || key.includes('\\') || key.includes('\0')) throw new Error('Clave de archivo inválida.');
@@ -41,7 +47,7 @@ export class LocalFileStorage implements FileStorage {
     await this.path(key,true);
     return { provider:'local',key,folderKey:input.folderKey };
   }
-  async ensureStored(input:{ reservation:StorageReservation; bytes:Uint8Array; sha256:string }) {
+  async ensureStored(input:{ reservation:StorageReservation; bytes:Uint8Array; sha256:string; mimeType:string }) {
     if (sha256(input.bytes) !== input.sha256) throw new Error('Hash del archivo incorrecto.');
     const target = await this.path(input.reservation.key,true);
     const file = await open(target, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY,0o600);
@@ -57,5 +63,27 @@ export class LocalFileStorage implements FileStorage {
       bytes = await file.readFile();
     } finally { await file.close(); }
     return new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new Uint8Array(bytes)); controller.close(); } });
+  }
+  async remove(input:{ key:string }) {
+    let target:string;
+    try { target = await this.path(input.key,false); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    }
+    try { await unlink(target); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+      throw error;
+    }
+    let parent = dirname(target);
+    while (parent !== this.root && inside(this.root,parent)) {
+      try { await rmdir(parent); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOTEMPTY') break;
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      parent = dirname(parent);
+    }
   }
 }

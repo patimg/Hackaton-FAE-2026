@@ -1,7 +1,6 @@
 begin;
--- Una transacción corta asegura que un evento repetido no genere clientes ni interacciones extra.
--- No contiene llamadas externas, leases ni recuperación concurrente.
-create function public.begin_ingestion(p_event jsonb, p_sha256 text, p_email text, p_phone text, p_files jsonb, p_actor uuid)
+
+create or replace function public.begin_ingestion(p_event jsonb, p_sha256 text, p_email text, p_phone text, p_files jsonb, p_actor uuid)
 returns jsonb language plpgsql security invoker set search_path = '' as $$
 declare
   v_event_id uuid;
@@ -40,7 +39,6 @@ begin
     v_identity_status := 'provisional';
   end if;
 
-  -- Los conectores autentican el evento; solo se vinculan las identidades exactas proporcionadas por el canal.
   if v_client is not null then
     if p_email is not null then
       insert into public.client_identities(client_id,kind,value_raw,value_normalized,verification_source)
@@ -50,7 +48,6 @@ begin
       insert into public.client_identities(client_id,kind,value_raw,value_normalized,verification_source)
       values(v_client,'phone',p_event->'sender'->>'phone',p_phone,'manual') on conflict(kind,value_normalized) do nothing;
     end if;
-    -- Una carrera entre mensajes diferentes no puede asociar silenciosamente una identidad ajena.
     if exists(select 1 from public.client_identities where client_id<>v_client and
       ((kind='email' and value_normalized=p_email) or (kind='phone' and value_normalized=p_phone))) then
       raise exception 'Identity changed while creating interaction' using errcode='23505';
@@ -72,6 +69,8 @@ begin
   return jsonb_build_object('event_id',v_event_id,'created',true,'conflict',false);
 end;
 $$;
+
 revoke all on function public.begin_ingestion(jsonb,text,text,text,jsonb,uuid) from public,anon,authenticated;
 grant execute on function public.begin_ingestion(jsonb,text,text,text,jsonb,uuid) to service_role;
+
 commit;

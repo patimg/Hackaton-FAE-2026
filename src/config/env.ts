@@ -1,10 +1,8 @@
 import { z } from "zod";
 import { isSupportedCountry } from "libphonenumber-js";
 const optionalValue = z.preprocess(value => value === '' ? undefined : value, z.string().min(1).optional());
-const optionalUrl = z.preprocess(value => value === '' ? undefined : value, z.url().optional());
 
 export const envSchema = z.object({
-  APP_MODE: z.enum(["demo", "live"]).default("demo"),
   APP_BASE_URL: z.url().default("http://localhost:3000"),
   APP_TIMEZONE: z.string().default("America/Santiago"),
   DEFAULT_PHONE_COUNTRY: z.string().length(2).refine(isSupportedCountry).default("CL"),
@@ -12,18 +10,16 @@ export const envSchema = z.object({
   SUPABASE_PUBLISHABLE_KEY: z.string().min(1),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   OPERATOR_USER_ID: z.uuid(),
-  STORAGE_PROVIDER: z.enum(["local", "google-drive"]).default("local"),
+  STORAGE_PROVIDER: z.literal("google-drive").default("google-drive"),
   GMAIL_USER: z.email().optional(),
   GMAIL_POLL_INTERVAL_MS: z.coerce.number().int().min(1000).max(86400000).default(30000),
-  INGEST_API_TOKEN: optionalValue,
+  INGEST_API_TOKEN: z.string().min(1),
   WHATSAPP_AUTH_DIR: z.string().min(1).default("./.data/whatsapp-auth"),
-  WHATSAPP_BACKEND_URL: optionalUrl,
-  AI_PROVIDER: z.enum(["deterministic", "openai"]).default("deterministic"),
+  AI_PROVIDER: z.literal("openai").default("openai"),
   AI_MODEL: optionalValue,
   AI_API_KEY: optionalValue,
   AI_BASE_URL: z.url().default("https://api.openai.com/v1"),
   AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(10000),
-  LOCAL_FILES_DIR: z.string().min(1).default("./.data/files"),
   STAGING_DIR: z.string().min(1).default("./.data/staging"),
   GOOGLE_DRIVE_ROOT_FOLDER_ID: optionalValue,
   MAX_FILES_PER_MESSAGE: z.coerce.number().int().min(1).max(20).default(5),
@@ -50,19 +46,13 @@ export const envSchema = z.object({
   if (!['http:', 'https:'].includes(appUrl.protocol) || appUrl.username || appUrl.password || appUrl.pathname !== '/' || appUrl.search || appUrl.hash) {
     ctx.addIssue({ code: 'custom', path: ['APP_BASE_URL'], message: 'Debe ser HTTP o HTTPS' });
   }
-  if (env.APP_MODE === 'demo') {
-    if (!['localhost', '127.0.0.1', '[::1]'].includes(supabaseUrl.hostname)) {
-      ctx.addIssue({ code: 'custom', path: ['SUPABASE_URL'], message: 'Demo requiere Supabase local' });
-    }
-    if (env.STORAGE_PROVIDER !== 'local' || env.AI_PROVIDER !== 'deterministic') {
-      ctx.addIssue({ code: 'custom', path: ['APP_MODE'], message: 'Demo requiere proveedores locales' });
-    }
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN || !env.GOOGLE_DRIVE_ROOT_FOLDER_ID) {
+    ctx.addIssue({ code:'custom', path:['GOOGLE_CLIENT_ID'], message:'Google Drive requiere credenciales OAuth y carpeta raíz' });
   }
-  if (env.APP_MODE === 'live' && env.AI_PROVIDER !== 'openai') ctx.addIssue({ code:'custom', path:['AI_PROVIDER'], message:'Live requiere un proveedor de IA real configurado' });
-  if (env.STORAGE_PROVIDER === 'google-drive' && (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN || !env.GOOGLE_DRIVE_ROOT_FOLDER_ID)) {
-    ctx.addIssue({ code:'custom', path:['STORAGE_PROVIDER'], message:'Google Drive requiere credenciales OAuth y carpeta raíz' });
+  if (!env.GMAIL_USER && !env.GMAIL_ACCOUNT_ID) {
+    ctx.addIssue({ code:'custom', path:['GMAIL_USER'], message:'Configura la cuenta que utilizará el conector de Gmail' });
   }
-  if (env.AI_PROVIDER === 'openai' && (!env.AI_API_KEY || !env.AI_MODEL)) ctx.addIssue({ code:'custom', path:['AI_API_KEY'], message:'AI_PROVIDER=openai requiere AI_API_KEY y AI_MODEL solo en servidor' });
+  if (!env.AI_API_KEY || !env.AI_MODEL) ctx.addIssue({ code:'custom', path:['AI_API_KEY'], message:'La búsqueda con IA requiere AI_API_KEY y AI_MODEL solo en servidor' });
   try { new Intl.DateTimeFormat('es-CL', { timeZone: env.APP_TIMEZONE }); }
   catch { ctx.addIssue({ code: 'custom', path: ['APP_TIMEZONE'], message: 'Zona horaria inválida' }); }
 });

@@ -13,7 +13,7 @@ export const searchPlanSchema = z.strictObject({
 });
 export type SearchPlan = z.infer<typeof searchPlanSchema>;
 export type SearchInput = { query:string; today:string; timezone:string };
-export type AIProviderInfo = { kind:'deterministic'|'ai'; provider:string; model:string|null; promptVersion:string };
+export type AIProviderInfo = { kind:'ai'; provider:string; model:string|null; promptVersion:string };
 export interface AIProvider {
   readonly info:AIProviderInfo;
   classifyDocument(input:ClassificationInput):Promise<Classification>;

@@ -8,25 +8,35 @@ test('sin sesión: páginas y API privadas; formulario valida origen', async ({p
   await page.goto('/clients');
   await expect(page).toHaveURL(/\/login$/);
   expect((await request.get('/api/v1/clients')).status()).toBe(401);
+  expect((await request.post('/api/v1/ingest',{multipart:{event:'{}'}})).status()).toBe(401);
+  expect((await request.post('/api/v1/ingest',{headers:{Authorization:'Bearer invalid'},multipart:{event:'{}'}})).status()).toBe(401);
+  expect((await request.get('/simulator')).status()).toBe(404);
   expect((await request.post('/auth/login', { headers:{Origin:'https://untrusted.example.test'}, form:{email:'operadora@example.test',password:'not-a-real-password'} })).status()).toBe(403);
+  const loopbackLogin = await request.post('/auth/login', {
+    headers:{Origin:'http://127.0.0.1:3000'},
+    form:{email:'operadora@example.test',password:'not-a-real-password'},
+    maxRedirects:0,
+  });
+  expect(loopbackLogin.status()).toBe(303);
+  expect(loopbackLogin.headers().location).toBe('http://127.0.0.1:3000/login?error=credentials');
 });
-test('login real, clientes persistidos, navegación, 404 y logout', async ({page}) => {
-  if (!process.env.DEMO_AUTH_EMAIL || !process.env.DEMO_AUTH_PASSWORD) throw new Error('Ejecuta demo:setup antes de E2E.');
+test('login real, panel principal, navegación, 404 y logout', async ({page}) => {
+  if (!process.env.LOCAL_OPERATOR_EMAIL || !process.env.LOCAL_OPERATOR_PASSWORD) throw new Error('Configura las credenciales de operadora para E2E.');
   await page.goto('/login');
-  await page.getByLabel('Correo',{exact:true}).fill(process.env.DEMO_AUTH_EMAIL);
-  await page.getByLabel('Contraseña',{exact:true}).fill(process.env.DEMO_AUTH_PASSWORD);
+  await page.getByLabel('Correo',{exact:true}).fill(process.env.LOCAL_OPERATOR_EMAIL);
+  await page.getByLabel('Contraseña',{exact:true}).fill(process.env.LOCAL_OPERATOR_PASSWORD);
   await page.getByRole('button',{name:'Entrar',exact:true}).click();
-  await expect(page.getByRole('heading',{name:'Documentos con contexto'})).toBeVisible();
-  await page.getByRole('navigation').getByRole('link',{name:'Clientes',exact:true}).click();
-  await expect(page.locator('a[href="/clients/10000000-0000-4000-8000-000000000012"]')).toBeVisible();
-  await expect(page.getByRole('link',{name:'Juan Soto'})).toBeVisible();
-  await page.locator('a[href="/clients/10000000-0000-4000-8000-000000000012"]').click();
-  await expect(page.getByText('carolina@example.test',{exact:true})).toBeVisible();
-  await expect(page.getByText('CLI-0012 - Carolina Perez',{exact:true})).toBeVisible();
-  for (const [path,title] of [['/documents','Documentos'],['/review','Revisión'],['/search','Búsqueda'],['/simulator','Simulador de entrada']]) {
+  await expect(page.getByRole('heading',{name:'¿Qué documento necesitas?'})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Clientes',exact:true})).toBeVisible();
+  await expect(page.getByRole('heading',{name:'Documentos recientes'})).toBeVisible();
+  await expect(page.getByRole('searchbox',{name:'Buscar en Gmail, WhatsApp y documentos'})).toBeVisible();
+  await expect(page.getByRole('navigation').getByRole('link',{name:'Simulador de entrada'})).toHaveCount(0);
+  for (const path of ['/clients','/documents','/search']) {
     await page.goto(path);
-    await expect(page.getByRole('heading',{name:title,exact:true})).toBeVisible();
+    await expect(page).toHaveURL('/');
   }
+  await page.goto('/review');
+  await expect(page.getByRole('heading',{name:'Revisión',exact:true})).toBeVisible();
   await page.goto('/clients/10000000-0000-4000-8000-000000000099');
   await expect(page.getByRole('heading',{name:'No encontramos esta página'})).toBeVisible();
   await page.goto('/');

@@ -1,10 +1,31 @@
 import { google, type gmail_v1 } from 'googleapis';
 import { createHash } from 'node:crypto';
-import { incomingEventSchema, type IncomingEvent } from '@/contracts/ingest';
+import { allowedMimeTypes, incomingEventSchema, type IncomingEvent } from '@/contracts/ingest';
 import { safeFilename, type ValidatedAttachment } from '@/server/files/validate';
 
-const allowedMime = new Set(['application/pdf', 'image/jpeg', 'image/png', 'text/plain']);
+const allowedMime = new Set<string>(allowedMimeTypes);
 type GmailPart = gmail_v1.Schema$MessagePart;
+
+function isAllowedMime(value: string): value is IncomingEvent['attachments'][number]['mime_type'] {
+  return allowedMime.has(value);
+}
+
+export function ingestionMimeType(value: string): IncomingEvent['attachments'][number]['mime_type'] | null {
+  const mime = value.toLowerCase();
+  if (mime === 'text/markdown') return 'text/plain';
+  return isAllowedMime(mime) ? mime : null;
+}
+
+function validatePlainText(bytes: Buffer, messageId: string, filename: string) {
+  let text: string;
+  try { text = new TextDecoder('utf-8', { fatal:true }).decode(bytes); }
+  catch { throw new Error(`El adjunto de texto "${filename}" en Gmail ${messageId} no es UTF-8 válido; quedó sin marcar como leído.`); }
+  const invalidControl = [...text].some(char => {
+    const code = char.charCodeAt(0);
+    return code < 32 && ![9, 10, 13].includes(code);
+  });
+  if (invalidControl) throw new Error(`El adjunto de texto "${filename}" en Gmail ${messageId} contiene caracteres no admitidos; quedó sin marcar como leído.`);
+}
 
 function decode(data: string | null | undefined) {
   return data ? Buffer.from(data.replace(/-/g, '+').replace(/_/g, '/'), 'base64') : Buffer.alloc(0);
@@ -61,19 +82,23 @@ export class GmailProvider {
     collect(message.payload ?? {}, text, html, parts);
     const attachments: ValidatedAttachment[] = [];
     for (const part of parts) {
-      const mime = (part.mimeType ?? 'application/octet-stream').toLowerCase();
-      if (!allowedMime.has(mime)) continue;
+      const sourceMime = (part.mimeType ?? 'application/octet-stream').toLowerCase();
+      const mime = ingestionMimeType(sourceMime);
+      if (!mime) {
+        throw new Error(`El adjunto "${part.filename || 'sin nombre'}" en Gmail ${id} tiene MIME no admitido (${sourceMime}); quedó sin marcar como leído.`);
+      }
       const bytes = part.body?.attachmentId
         ? (await this.client.users.messages.attachments.get({ userId: 'me', messageId: id, id: part.body.attachmentId })).data.data
         : part.body?.data;
       const data = decode(bytes);
       if (!data.length) continue;
       const filename = part.filename || `adjunto-${attachments.length + 1}`;
+      if (mime === 'text/plain') validatePlainText(data, id, filename);
       attachments.push({
         external_attachment_id: `${id}:${part.partId ?? attachments.length}`,
         file_field: `file_${attachments.length}`,
         filename,
-        mime_type: mime as 'application/pdf' | 'image/jpeg' | 'image/png' | 'text/plain',
+        mime_type: mime,
         size_bytes: data.length,
         bytes: data,
         sha256: createHash('sha256').update(data).digest('hex'),

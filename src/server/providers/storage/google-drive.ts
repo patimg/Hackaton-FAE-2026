@@ -14,6 +14,28 @@ export class GoogleDriveStorage implements FileStorage {
     this.drive = google.drive({ version:'v3', auth });
     this.rootFolderId = config.rootFolderId;
   }
+  async assertReady() {
+    let root:drive_v3.Schema$File;
+    try {
+      const response = await this.drive.files.get({
+        fileId:this.rootFolderId,
+        fields:'id,mimeType,trashed,capabilities(canAddChildren)',
+        supportsAllDrives:true,
+      });
+      root = response.data;
+    } catch (error) {
+      const status = typeof error === 'object' && error !== null && 'response' in error
+        ? (error as {response?:{status?:number}}).response?.status
+        : undefined;
+      if (status === 404) {
+        throw new Error('La carpeta raíz de Google Drive no existe o no es accesible para la cuenta OAuth. Verifica el ID y comparte la carpeta con esa cuenta.');
+      }
+      throw error;
+    }
+    if (root.trashed) throw new Error('La carpeta raíz de Google Drive está en la papelera.');
+    if (root.mimeType !== 'application/vnd.google-apps.folder') throw new Error('GOOGLE_DRIVE_ROOT_FOLDER_ID no identifica una carpeta.');
+    if (root.capabilities?.canAddChildren === false) throw new Error('La cuenta OAuth no tiene permiso para añadir archivos a la carpeta raíz de Google Drive.');
+  }
   private async folder(parentId:string,name:string) {
     const escaped = name.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     const found = await this.drive.files.list({q:`'${parentId}' in parents and name = '${escaped}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,spaces:'drive',fields:'files(id,name)',pageSize:1});
@@ -33,11 +55,11 @@ export class GoogleDriveStorage implements FileStorage {
     await this.folders(input.folderKey);
     return {provider:'google-drive',key:`${input.folderKey}/${input.documentId}__${input.filename}`,folderKey:input.folderKey};
   }
-  async ensureStored(input:{reservation:StorageReservation;bytes:Uint8Array;sha256:string}) {
+  async ensureStored(input:{reservation:StorageReservation;bytes:Uint8Array;sha256:string;mimeType:string}) {
     if (sha256(input.bytes) !== input.sha256) throw new Error('Hash del archivo incorrecto.');
     const parent = await this.folders(input.reservation.folderKey);
     const name = input.reservation.key.slice(input.reservation.key.lastIndexOf('/') + 1);
-    const created = await this.drive.files.create({requestBody:{name,parents:[parent]},media:{mimeType:'application/octet-stream',body:Readable.from(Buffer.from(input.bytes))},fields:'id'});
+    const created = await this.drive.files.create({requestBody:{name,parents:[parent]},media:{mimeType:input.mimeType,body:Readable.from(Buffer.from(input.bytes))},fields:'id'});
     if (!created.data.id) throw new Error('Google Drive no devolvió el ID del archivo.');
     return {...input.reservation,key:created.data.id,fileId:created.data.id};
   }
@@ -53,5 +75,8 @@ export class GoogleDriveStorage implements FileStorage {
       },
       cancel() { (stream as NodeJS.ReadableStream & { destroy():void }).destroy(); },
     });
+  }
+  async remove(input:{key:string}) {
+    await this.drive.files.delete({fileId:input.key});
   }
 }

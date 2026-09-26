@@ -2,7 +2,6 @@ import { z } from 'zod';
 import { getOperator } from '@/server/auth/operator';
 import { database } from '@/server/db/client';
 import { findDocument } from '@/server/db/documents';
-import { LocalFileStorage } from '@/server/providers/storage/local';
 import { GoogleDriveStorage } from '@/server/providers/storage/google-drive';
 import { getEnv } from '@/server/config';
 import { AppError,errorResponse } from '@/server/errors';
@@ -18,12 +17,10 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string}>
     let body:ReadableStream<Uint8Array>;
     try {
       const env = getEnv();
-      const storage = doc.storage_provider === 'google-drive'
-        ? new GoogleDriveStorage({clientId:env.GOOGLE_CLIENT_ID!,clientSecret:env.GOOGLE_CLIENT_SECRET!,refreshToken:env.GOOGLE_REFRESH_TOKEN!,rootFolderId:env.GOOGLE_DRIVE_ROOT_FOLDER_ID!})
-        : new LocalFileStorage(env.LOCAL_FILES_DIR);
+      const storage = new GoogleDriveStorage({clientId:env.GOOGLE_CLIENT_ID!,clientSecret:env.GOOGLE_CLIENT_SECRET!,refreshToken:env.GOOGLE_REFRESH_TOKEN!,rootFolderId:env.GOOGLE_DRIVE_ROOT_FOLDER_ID!});
       body = await storage.read({key:doc.storage_key});
     }
-    catch { throw new AppError('FILE_UNAVAILABLE','El archivo no está disponible en el almacenamiento local.',503); }
+    catch { throw new AppError('FILE_UNAVAILABLE','El archivo no está disponible en Google Drive.',503); }
     return new Response(body,{headers:{'Content-Type':doc.mime_type,'Content-Length':String(doc.size_bytes),
       'Content-Disposition':`attachment; filename="${doc.safe_filename}"`,'X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store'}});
   } catch (error) { return errorResponse(error); }
