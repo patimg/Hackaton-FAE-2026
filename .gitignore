@@ -1,6 +1,7 @@
 # Entornos y credenciales locales
 .env
 .env.*
+.env.local.download
 !.env.example
 credentials/
 secrets/
