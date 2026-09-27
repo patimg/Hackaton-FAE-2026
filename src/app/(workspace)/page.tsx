@@ -13,15 +13,20 @@ export default async function Home({ searchParams }: { searchParams: WorkspaceSe
   const query = (params.q || '').trim().slice(0, 500);
   const selectedClient = z.uuid().safeParse(params.client).success ? params.client! : null;
   const { db, ai, timezone } = searchDependencies();
-  const [clients, documents, reviewDocuments] = await Promise.all([
+  const [clients, documents, reviewDocuments, clientActivity] = await Promise.all([
     listClients(),
     listDocuments(db, { page: 1 }),
     listDocuments(db, { needsReview: true, page: 1 }),
+    db.from('interactions').select('client_id,received_at').not('client_id','is',null).order('received_at',{ascending:false}).limit(500),
   ]);
+  if(clientActivity.error) throw new Error('No se pudo consultar la actividad de clientes.');
   const results = query ? await new SearchService(db, ai, timezone).search(query, selectedClient) : null;
   const recentDocuments = documents.items.slice(0, 8);
   const activeClients=clients.filter(client=>client.status==='active');
-  const provisionalClients=clients.filter(client=>client.status==='provisional');
+  const latestActivity=new Map<string,string>();
+  for(const interaction of clientActivity.data||[]) if(interaction.client_id&&!latestActivity.has(interaction.client_id)) latestActivity.set(interaction.client_id,interaction.received_at);
+  const activityDate=(client:{id:string;created_at:string})=>Math.max(new Date(client.created_at).getTime(),new Date(latestActivity.get(client.id)||client.created_at).getTime());
+  const provisionalClients=clients.filter(client=>client.status==='provisional').sort((a,b)=>activityDate(b)-activityDate(a));
   const archivedClients=clients.filter(client=>client.status==='archived');
 
   return (
@@ -65,7 +70,7 @@ export default async function Home({ searchParams }: { searchParams: WorkspaceSe
         ) : (
           <p className="panel-empty">Los clientes aparecerán aquí cuando llegue su primer mensaje.</p>
         )}
-        {provisionalClients.length>0&&<section className="provisional-section"><div className="subpanel-heading"><span>Provisionales</span><strong>{provisionalClients.length}</strong></div><p className="panel-hint">Remitentes detectados sin confirmar como clientes.</p><ul className="client-list compact-client-list">{provisionalClients.slice(0,3).map(client=><li key={client.id}><Link href={`/clients/${client.id}`}><span className="client-avatar provisional-avatar" aria-hidden="true">{client.display_name.slice(0,1).toLocaleUpperCase('es-CL')}</span><span className="client-copy"><span className="client-name">{client.display_name}</span><span className="client-code">CLI-{String(client.client_number).padStart(4,'0')}</span></span></Link></li>)}</ul><Link className="provisional-link" href="/clients?status=provisional">Gestionar provisionales{provisionalClients.length>3?` · +${provisionalClients.length-3}`:''}</Link></section>}
+        {provisionalClients.length>0&&<section className="provisional-section"><div className="subpanel-heading"><span>Provisionales</span><strong>{provisionalClients.length}</strong></div><p className="panel-hint">Remitentes detectados sin confirmar como clientes.</p><ul className="client-list compact-client-list">{provisionalClients.slice(0,3).map((client,index)=><li key={client.id}><Link href={`/clients/${client.id}`}><span className="client-avatar provisional-avatar" aria-hidden="true">{client.display_name.slice(0,1).toLocaleUpperCase('es-CL')}</span><span className="client-copy"><span className="client-name">{client.display_name}{index===0&&<span className="latest-client-label">Último</span>}</span><span className="client-code">CLI-{String(client.client_number).padStart(4,'0')}</span></span></Link></li>)}</ul><Link className="provisional-link" href="/clients?status=provisional">Gestionar provisionales{provisionalClients.length>3?` · +${provisionalClients.length-3}`:''}</Link></section>}
         {archivedClients.length>0&&<p className="panel-hint archived-hint">{archivedClients.length} cliente(s) archivado(s) no se muestran.</p>}
       </aside>
 
@@ -167,12 +172,12 @@ export default async function Home({ searchParams }: { searchParams: WorkspaceSe
           <ul className="recent-list">
             {recentDocuments.map(document => (
               <li key={document.id}>
-                <Link href={`/documents/${document.id}`}>
+                <Link className={document.classification_status==='needs_review'?'recent-item needs-attention':'recent-item reviewed-item'} href={`/documents/${document.id}`}>
                   <span className="file-mark" aria-hidden="true">{document.mime_type === 'application/pdf' ? 'PDF' : 'IMG'}</span>
                   <span className="recent-copy">
                     <span className="recent-name">{document.original_filename}</span>
                     <span className="recent-context">{document.interaction.client?.display_name || 'Sin cliente'} · {document.interaction.source === 'gmail' ? 'Gmail' : 'WhatsApp'}</span>
-                    <span className="recent-date">{displayDate(document.created_at, timezone)}</span>
+                    <span className="recent-date">{displayDate(document.created_at, timezone)} · {document.classification_status==='needs_review'?'Requiere revisión':'Procesado'}</span>
                   </span>
                 </Link>
               </li>

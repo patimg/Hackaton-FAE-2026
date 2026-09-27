@@ -34,6 +34,7 @@ Gmail puede etiquetar archivos Markdown como `text/markdown`. Para mantener un �
 
 La IA entrega categorías, resúmenes y un plan de búsqueda validado. La base ejecuta SQL parametrizado; el modelo no genera consultas ejecutables, permisos ni rutas. Los resultados inciertos se pueden revisar manualmente.
 
+
 ## Validación tolerante para el plan de búsqueda (no para la clasificación)
 
 `searchPlanSchema` valida por objeto abierto (no estricto): una clave extra que el modelo agregue se descarta sin invalidar el resto, porque `SearchService` solo lee el plan por clave nombrada y la RPC `search_documents` es parametrizada — una clave adicional nunca llega a ejecutarse. Esto evita que proveedores/modelos menos obedientes con el formato exacto (ej. modelos pequeños vía Groq) caigan siempre al modo de coincidencias por texto. `classificationSchema` sí se mantiene estricto: sus resultados se guardan tal cual en `documents`, así que una clave inesperada ahí sí debe rechazarse. Cualquier fallo real de interpretación IA en búsqueda queda registrado en consola del servidor (antes se descartaba en silencio).

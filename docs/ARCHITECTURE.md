@@ -27,6 +27,7 @@ flowchart LR
 - `/` consulta clientes y documentos recientes y procesa `q` con `SearchService`; los resultados se obtienen mediante la RPC parametrizada `search_documents`. Las rutas antiguas `/clients`, `/documents` y `/search` redirigen al panel; los detalles de clientes/documentos y `/review` siguen disponibles.
 - Los clientes tienen ciclo de vida `provisional`, `active` o `archived`. El cambio de estado es reversible y no elimina el historial; el panel muestra activos y una muestra breve de provisionales, mientras `/clients` ofrece la gestión completa por estado.
 - La fusión manual se ejecuta desde la ficha del cliente superviviente. Primero consolida el contenido de la carpeta secundaria en Drive y después la RPC `merge_clients` mueve identidades, interacciones, solicitudes, órdenes y rutas lógicas antes de eliminar el cliente duplicado. No se fusiona automáticamente por nombre o canal.
+- Cada fusión crea un registro en `client_merge_operations`: `pending`, `drive_completed`, `completed` o `failed`. Esto no vuelve transaccionales Drive y PostgreSQL, pero evita perder el estado y permite recuperar una operación interrumpida.
 
 ## Contrato de entrada
 

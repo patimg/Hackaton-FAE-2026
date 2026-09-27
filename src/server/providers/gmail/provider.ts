@@ -63,6 +63,7 @@ export type GmailMessage = { event: IncomingEvent; attachments: ValidatedAttachm
 
 export class GmailProvider {
   readonly client: gmail_v1.Gmail;
+  private processedLabelId: string | null = null;
   constructor(options: { clientId: string; clientSecret: string; refreshToken: string }) {
     const auth = new google.auth.OAuth2(options.clientId, options.clientSecret);
     auth.setCredentials({ refresh_token: options.refreshToken });
@@ -124,6 +125,15 @@ export class GmailProvider {
   }
 
   async markRead(id: string) {
-    await this.client.users.messages.modify({ userId: 'me', id, requestBody: { removeLabelIds: ['UNREAD'] } });
+    if (!this.processedLabelId) {
+      const labels=await this.client.users.labels.list({userId:'me'});
+      const existing=labels.data.labels?.find(label=>label.name==='FAE_PROCESSED');
+      if (existing?.id) this.processedLabelId=existing.id;
+      else {
+        const created=await this.client.users.labels.create({userId:'me',requestBody:{name:'FAE_PROCESSED',labelListVisibility:'labelShow',messageListVisibility:'show'}});
+        this.processedLabelId=created.data.id||null;
+      }
+    }
+    await this.client.users.messages.modify({ userId: 'me', id, requestBody: { removeLabelIds: ['UNREAD'], ...(this.processedLabelId ? {addLabelIds:[this.processedLabelId]} : {}) } });
   }
 }

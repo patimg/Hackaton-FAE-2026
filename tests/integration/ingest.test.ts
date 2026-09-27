@@ -122,6 +122,14 @@ test('pipeline: WhatsApp de chat individual conserva texto sin crear documentos'
   const saved=await db.from('interactions').select('source,message_text').eq('id',result.result.interaction_id).single();
   assert.equal(saved.data?.source,'whatsapp');assert.equal(saved.data?.message_text,event.text);
 });
+test('resolución manual de identidad limpia la cola de pendientes',async()=>{
+  const {event}=await message();event.sender={display_name:`${testClientName}-manual`,email:null,phone:null};event.attachments=[];
+  const result=await ingest(event,[]);
+  const resolved=await db.rpc('resolve_interaction_identity',{p_interaction_id:result.result.interaction_id,p_client_id:testClientIds[0],p_actor:env.OPERATOR_USER_ID});
+  assert.equal(resolved.error,null);
+  const interaction=await db.from('interactions').select('identity_status,identity_resolution').eq('id',result.result.interaction_id).single();
+  assert.equal(interaction.error,null);assert.equal(interaction.data?.identity_status,'resolved');assert.equal(interaction.data?.identity_resolution.missing_identity,false);
+});
 test('pipeline: nuevo cliente y mismo nombre con otra identidad no se fusionan',async()=>{
   const {event,files}=await message('receipt');event.sender={display_name:`${testClientName}-new`,email:`itest-new-${randomUUID()}@example.test`,phone:null};
   const result=await ingest(event,files);assert.equal(result.result.client_resolution,'created');assert.notEqual(result.result.client?.id,testClientIds[0]);

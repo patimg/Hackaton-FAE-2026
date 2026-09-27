@@ -48,3 +48,8 @@ export async function getEventContext(db:SupabaseClient,eventId:string) {
   if (documents.error) throw new AppError('DATABASE_UNAVAILABLE','No se pudieron recuperar los adjuntos.',503,eventId);
   return {interaction:data,documents:documents.data};
 }
+export async function listPendingIdentityInteractions(db:SupabaseClient) {
+  const {data,error,count}=await db.from('interactions').select(interactionSelect,{count:'exact'}).or('identity_status.eq.conflict,identity_resolution->>missing_identity.eq.true').order('received_at',{ascending:false}).limit(50).returns<Interaction[]>();
+  if(error) throw new AppError('DATABASE_UNAVAILABLE','No se pudieron consultar las identidades pendientes.',503);
+  return {items:data,total:count||0};
+}
