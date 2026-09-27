@@ -39,6 +39,13 @@ Esta comprobación confirma el procesamiento de esos mensajes, no que los worker
 
 ## Conectores
 
+WhatsApp solo importa imágenes y documentos compatibles recibidos en conversaciones
+individuales. Ignora grupos, estados, difusiones, canales, mensajes propios y texto
+sin adjuntos antes de descargar archivos o crear clientes. El servidor también
+rechaza eventos de WhatsApp sin un chat individual o sin archivos. El texto que
+acompaña un archivo se conserva como contexto. Esta regla no elimina registros
+importados anteriormente; reinicia el listener para activar el filtro.
+
 Consulta [docs/INTEGRATIONS_SETUP.md](docs/INTEGRATIONS_SETUP.md) para crear las credenciales OAuth y vincular WhatsApp.
 
 En terminales separadas, con Supabase y Next.js iniciados:

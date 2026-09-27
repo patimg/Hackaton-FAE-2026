@@ -4,6 +4,7 @@ import { loadLocalEnv } from './local-env';
 loadLocalEnv();
 import { incomingEventSchema } from '../src/contracts/ingest';
 import { normalizePhoneIfValid } from '../src/domain/identity';
+import { shouldIngestWhatsAppMessage, unwrapWhatsAppMessage as unwrapMessage } from '../src/domain/whatsapp';
 import {
   Browsers,
   DisconnectReason,
@@ -28,14 +29,6 @@ function requireCredentials() {
   if (configuredAccountId && !/^\+?\d{3,20}$/.test(configuredAccountId)) {
     throw new Error('WHATSAPP_SOURCE_ACCOUNT_ID debe ser un número real en formato internacional.');
   }
-}
-
-function unwrapMessage(message: WAMessage) {
-  const raw = message.message;
-  return raw?.ephemeralMessage?.message
-    ?? raw?.viewOnceMessage?.message
-    ?? raw?.viewOnceMessageV2?.message
-    ?? raw;
 }
 
 function messageText(message: WAMessage): string {
@@ -67,6 +60,7 @@ function sourceAccountId(socket: ReturnType<typeof makeWASocket>): string {
 }
 
 async function createForm(message: WAMessage, socket: ReturnType<typeof makeWASocket>) {
+  if (!shouldIngestWhatsAppMessage(message)) return null;
   const content = unwrapMessage(message);
   const attachments: Array<{
     external_attachment_id: string;
@@ -100,7 +94,7 @@ async function createForm(message: WAMessage, socket: ReturnType<typeof makeWASo
     }
   }
   const text = messageText(message).slice(0, 10000);
-  if (!text.trim() && attachments.length === 0) return null;
+  if (attachments.length === 0) return null;
   const remoteJid = message.key.remoteJid || 'unknown';
   const event = {
     schema_version: '1' as const,
@@ -125,7 +119,7 @@ async function createForm(message: WAMessage, socket: ReturnType<typeof makeWASo
 async function dispatch(message: WAMessage, socket: ReturnType<typeof makeWASocket>) {
   const payload = await createForm(message, socket);
   if (!payload) {
-    console.info('Mensaje omitido: no contiene texto ni archivos compatibles.');
+    console.info('Mensaje omitido: se requieren archivos compatibles en un chat individual.');
     return;
   }
   const { event, files } = payload;
@@ -181,7 +175,7 @@ async function run() {
   socket.ev.on('messages.upsert', async ({ messages, type }) => {
     if (type !== 'notify') return;
     for (const message of messages) {
-      if (message.key.fromMe || !message.message) continue;
+      if (!shouldIngestWhatsAppMessage(message)) continue;
       try { await dispatch(message, socket); }
       catch (error) { console.error(error instanceof Error ? error.message : 'Falló la ingestión.'); }
     }
