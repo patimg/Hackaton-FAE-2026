@@ -20,6 +20,9 @@ export default async function Home({ searchParams }: { searchParams: WorkspaceSe
   ]);
   const results = query ? await new SearchService(db, ai, timezone).search(query, selectedClient) : null;
   const recentDocuments = documents.items.slice(0, 8);
+  const activeClients=clients.filter(client=>client.status==='active');
+  const provisionalClients=clients.filter(client=>client.status==='provisional');
+  const archivedClients=clients.filter(client=>client.status==='archived');
 
   return (
     <div className="workspace-shell">
@@ -32,7 +35,7 @@ export default async function Home({ searchParams }: { searchParams: WorkspaceSe
         <div className="banner-signal"><span className="signal-dot" aria-hidden="true" />Canales conectados<span className="signal-detail">Gmail · WhatsApp · Drive</span></div>
       </section>
       <section className="metric-strip" aria-label="Resumen del espacio de trabajo">
-        <div className="metric"><span className="metric-label">Clientes</span><strong>{clients.length}</strong><span className="metric-note">Directorio activo</span></div>
+        <div className="metric"><span className="metric-label">Clientes activos</span><strong>{activeClients.length}</strong><span className="metric-note">{provisionalClients.length} provisionales separados</span></div>
         <div className="metric"><span className="metric-label">Documentos</span><strong>{documents.total}</strong><span className="metric-note">En todos los canales</span></div>
         <div className={`metric ${reviewDocuments.total ? 'metric-alert' : ''}`}><span className="metric-label">Revisión</span><strong>{reviewDocuments.total}</strong><span className="metric-note">{reviewDocuments.total ? 'Requieren atención' : 'Todo al día'}</span></div>
       </section>
@@ -43,11 +46,11 @@ export default async function Home({ searchParams }: { searchParams: WorkspaceSe
             <p className="eyebrow">Directorio</p>
             <h2 id="clients-heading">Clientes</h2>
           </div>
-          <span className="count">{clients.length}</span>
+          <span className="count">{activeClients.length}</span>
         </div>
-        {clients.length ? (
+        {activeClients.length ? (
           <ul className="client-list">
-            {clients.map(client => (
+            {activeClients.map(client => (
               <li key={client.id}>
                 <Link href={`/clients/${client.id}`}>
                   <span className="client-avatar" aria-hidden="true">{client.display_name.slice(0, 1).toLocaleUpperCase('es-CL')}</span>
@@ -62,6 +65,8 @@ export default async function Home({ searchParams }: { searchParams: WorkspaceSe
         ) : (
           <p className="panel-empty">Los clientes aparecerán aquí cuando llegue su primer mensaje.</p>
         )}
+        {provisionalClients.length>0&&<section className="provisional-section"><div className="subpanel-heading"><span>Provisionales</span><strong>{provisionalClients.length}</strong></div><p className="panel-hint">Remitentes detectados sin confirmar como clientes.</p><ul className="client-list compact-client-list">{provisionalClients.slice(0,3).map(client=><li key={client.id}><Link href={`/clients/${client.id}`}><span className="client-avatar provisional-avatar" aria-hidden="true">{client.display_name.slice(0,1).toLocaleUpperCase('es-CL')}</span><span className="client-copy"><span className="client-name">{client.display_name}</span><span className="client-code">CLI-{String(client.client_number).padStart(4,'0')}</span></span></Link></li>)}</ul><Link className="provisional-link" href="/clients?status=provisional">Gestionar provisionales{provisionalClients.length>3?` · +${provisionalClients.length-3}`:''}</Link></section>}
+        {archivedClients.length>0&&<p className="panel-hint archived-hint">{archivedClients.length} cliente(s) archivado(s) no se muestran.</p>}
       </aside>
 
       <section className="organizer-panel search-panel" aria-labelledby="search-heading">
@@ -134,7 +139,7 @@ export default async function Home({ searchParams }: { searchParams: WorkspaceSe
                     ))}
                   </div>
                 ) : (
-                  <p className="panel-empty">No encontramos documentos para esta consulta.</p>
+                  <p className="search-empty">{results.plan.clientName ? <>Encontramos a <strong>{results.plan.clientName}</strong>, pero todavía no hay documentos asociados a este cliente.</> : 'No encontramos documentos que coincidan con esta búsqueda.'}</p>
                 )}
               </section>
             )}

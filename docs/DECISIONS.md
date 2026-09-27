@@ -18,6 +18,8 @@ El evento multipart normalizado es validado una vez. Gmail invoca el servicio di
 
 Email y teléfono se normalizan y se comparan exactamente. El nombre no fusiona clientes. Contactos contradictorios o insuficientes quedan para revisión humana.
 
+Un remitente nuevo puede crear un cliente `provisional`, pero no se considera cliente activo hasta confirmación manual. `archived` es un estado reversible para ocultar ruido histórico sin eliminar interacciones, identidades ni documentos.
+
 ## Idempotencia por mensaje y hash por archivo
 
 La clave única `(source, source_account_id, external_message_id)` evita duplicar un reenvío técnico. El SHA-256 conserva la integridad del binario. Enviar el mismo archivo en mensajes diferentes conserva cada contexto.

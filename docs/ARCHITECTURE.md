@@ -25,6 +25,7 @@ flowchart LR
 - `.data/staging` conserva los originales durante el procesamiento; se eliminan tras confirmar el guardado en Drive y permanecen disponibles localmente si el evento falla.
 - Si Drive o una dependencia temporal falla, el evento queda como `retryable_failed`. Una nueva entrega del mismo evento puede reanudarlo: reutiliza staging y omite documentos ya almacenados para evitar duplicados.
 - `/` consulta clientes y documentos recientes y procesa `q` con `SearchService`; los resultados se obtienen mediante la RPC parametrizada `search_documents`. Las rutas antiguas `/clients`, `/documents` y `/search` redirigen al panel; los detalles de clientes/documentos y `/review` siguen disponibles.
+- Los clientes tienen ciclo de vida `provisional`, `active` o `archived`. El cambio de estado es reversible y no elimina el historial; el panel muestra activos y una muestra breve de provisionales, mientras `/clients` ofrece la gestión completa por estado.
 
 ## Contrato de entrada
 

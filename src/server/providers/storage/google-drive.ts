@@ -50,6 +50,22 @@ export class GoogleDriveStorage implements FileStorage {
     for (const part of key.split('/')) parent = await this.folder(parent,part);
     return parent;
   }
+  private async findFolders(key:string) {
+    if (!key || key.includes('\\') || key.split('/').some(part => !part || part === '.' || part === '..' || part.includes('\0'))) throw new Error('Carpeta inválida.');
+    let parent = this.rootFolderId;
+    for (const part of key.split('/')) {
+      const escaped = part.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const found = await this.drive.files.list({q:`'${parent}' in parents and name = '${escaped}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,spaces:'drive',fields:'files(id)',pageSize:1});
+      const id=found.data.files?.[0]?.id;
+      if (!id) return null;
+      parent=id;
+    }
+    return parent;
+  }
+  async findFolderUrl(key:string) {
+    const id=await this.findFolders(key);
+    return id ? `https://drive.google.com/drive/folders/${encodeURIComponent(id)}` : null;
+  }
   async reserve(input:StorageReservationInput):Promise<StorageReservation> {
     if (!/^[a-f0-9-]{36}$/.test(input.documentId) || !/^[a-zA-Z0-9_.-]+$/.test(input.filename)) throw new Error('Destino inválido.');
     await this.folders(input.folderKey);

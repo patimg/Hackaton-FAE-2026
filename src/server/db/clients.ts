@@ -3,7 +3,7 @@ import { database } from './client';
 import { requireOperator } from '@/server/auth/operator';
 import { z } from 'zod';
 
-export type Client = { id: string; client_number: number; display_name: string; folder_name: string; status: 'provisional' | 'active'; notes: string | null; created_at: string };
+export type Client = { id: string; client_number: number; display_name: string; folder_name: string; status: 'provisional' | 'active' | 'archived'; notes: string | null; created_at: string };
 export type ClientIdentity = { id: string; kind: 'email' | 'phone'; value_normalized: string };
 const fields = 'id,client_number,display_name,folder_name,status,notes,created_at';
 

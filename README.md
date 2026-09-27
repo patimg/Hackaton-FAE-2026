@@ -27,6 +27,8 @@ npm run dev
 
 La interfaz privada queda en **http://localhost:3000**. La vista principal reúne el directorio de clientes, la búsqueda IA y los documentos recientes. La revisión manual se mantiene en **/review**.
 
+Los clientes nuevos se crean como `provisional` hasta que una operadora los confirme. El panel principal muestra los clientes `active` y solo una muestra breve de provisionales; la gestión completa está en `/clients`, con filtros para activos, provisionales y archivados. Desde la ficha o el gestor se puede confirmar, archivar o restaurar un registro. Archivar solo lo oculta del directorio activo: conserva interacciones, identidades y documentos.
+
 La aplicación necesita credenciales reales de Drive e IA para iniciar; ya no existe almacenamiento local de documentos finales ni proveedor determinista en tiempo de ejecución. Los archivos pasan por `.data/staging` mientras se procesan, se eliminan de ahí tras guardarse correctamente en Drive y se conservan si el procesamiento falla para permitir su revisión.
 
 Los fallos temporales de Drive o dependencias quedan marcados como `retryable_failed`. Si el mismo conector vuelve a entregar el evento, el pipeline reutiliza staging y evita duplicar documentos ya almacenados. La resolución de identidades pendientes se realiza desde `/review`; por ahora actualiza la asociación en la base, pero no mueve físicamente originales antiguos dentro de Drive.
