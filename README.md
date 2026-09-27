@@ -29,6 +29,8 @@ La interfaz privada queda en **http://localhost:3000**. La vista principal reún
 
 Los clientes nuevos se crean como `provisional` hasta que una operadora los confirme. El panel principal muestra los clientes `active` y solo una muestra breve de provisionales; la gestión completa está en `/clients`, con filtros para activos, provisionales y archivados. Desde la ficha o el gestor se puede confirmar, archivar o restaurar un registro. Archivar solo lo oculta del directorio activo: conserva interacciones, identidades y documentos.
 
+Si el mismo cliente llegó por Gmail y WhatsApp como dos registros, la ficha permite fusionarlos. El cliente actual de la ficha es el superviviente: sus interacciones, identidades y documentos pasan a él; el contenido de la carpeta antigua de Drive se mueve a la carpeta superviviente y el registro duplicado se elimina de la base. La operación se detiene si Drive no puede mover la carpeta o si existen identidades incompatibles.
+
 La aplicación necesita credenciales reales de Drive e IA para iniciar; ya no existe almacenamiento local de documentos finales ni proveedor determinista en tiempo de ejecución. Los archivos pasan por `.data/staging` mientras se procesan, se eliminan de ahí tras guardarse correctamente en Drive y se conservan si el procesamiento falla para permitir su revisión.
 
 Los fallos temporales de Drive o dependencias quedan marcados como `retryable_failed`. Si el mismo conector vuelve a entregar el evento, el pipeline reutiliza staging y evita duplicar documentos ya almacenados. La resolución de identidades pendientes se realiza desde `/review`; por ahora actualiza la asociación en la base, pero no mueve físicamente originales antiguos dentro de Drive.

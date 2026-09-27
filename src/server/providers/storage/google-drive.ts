@@ -66,6 +66,26 @@ export class GoogleDriveStorage implements FileStorage {
     const id=await this.findFolders(key);
     return id ? `https://drive.google.com/drive/folders/${encodeURIComponent(id)}` : null;
   }
+  private async mergeFolderContents(sourceId:string,targetId:string):Promise<void> {
+    const children=await this.drive.files.list({q:`'${sourceId}' in parents and trashed = false`,spaces:'drive',fields:'files(id,name,mimeType)',pageSize:1000});
+    for(const child of children.data.files||[]) {
+      if(!child.id||!child.name) continue;
+      if(child.mimeType==='application/vnd.google-apps.folder') {
+        const targetChild=await this.folder(targetId,child.name);
+        await this.mergeFolderContents(child.id,targetChild);
+        await this.drive.files.delete({fileId:child.id});
+      } else {
+        await this.drive.files.update({fileId:child.id,addParents:targetId,removeParents:sourceId,fields:'id'});
+      }
+    }
+  }
+  async mergeClientFolders(sourceKey:string,targetKey:string) {
+    const sourceId=await this.findFolders(sourceKey);
+    if(!sourceId) return;
+    const targetId=await this.folders(targetKey);
+    await this.mergeFolderContents(sourceId,targetId);
+    await this.drive.files.delete({fileId:sourceId});
+  }
   async reserve(input:StorageReservationInput):Promise<StorageReservation> {
     if (!/^[a-f0-9-]{36}$/.test(input.documentId) || !/^[a-zA-Z0-9_.-]+$/.test(input.filename)) throw new Error('Destino inválido.');
     await this.folders(input.folderKey);

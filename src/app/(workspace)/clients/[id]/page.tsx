@@ -8,10 +8,13 @@ import { categoryLabels, displayDate } from '@/domain/presentation';
 import { getEnv } from '@/server/config';
 import { ClientStatusForm } from '@/components/client-status-form';
 import { GoogleDriveStorage } from '@/server/providers/storage/google-drive';
+import { ClientMergeForm } from '@/components/client-merge-form';
+import { listClients } from '@/server/db/clients';
 export default async function ClientDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const client = await findClient(id);
   if (!client) notFound();
+  const allClients=await listClients();
   const db=database();
   const docs=await listDocuments(db,{clientId:id});
   const {data:interactions,error}=await db.from('interactions').select(interactionSelect).eq('client_id',id).order('received_at',{ascending:false}).limit(50).returns<Interaction[]>();
@@ -34,6 +37,7 @@ export default async function ClientDetail({ params }: { params: Promise<{ id: s
         <section className="info-panel"><p className="eyebrow">Identidad</p><h2>Datos de contacto</h2>{client.identities.length ? <ul className="identity-list">{client.identities.map(identity=><li key={identity.id}><span className="identity-kind">{identity.kind === 'email' ? 'Correo' : 'Teléfono'}</span><strong>{identity.value_normalized}</strong></li>)}</ul> : <p className="muted">No hay identidades verificadas.</p>}{client.notes&&<p className="client-notes">{client.notes}</p>}</section>
         <section className="info-panel"><p className="eyebrow">Canales</p><h2>Actividad por origen</h2><div className="channel-row"><span>Gmail</span><strong>{gmailCount}</strong></div><div className="channel-row"><span>WhatsApp</span><strong>{whatsappCount}</strong></div></section>
         <section className="info-panel"><p className="eyebrow">Archivo</p><h2>Tipos recibidos</h2>{Object.keys(categoryCounts).length ? <ul className="category-list">{Object.entries(categoryCounts).map(([category,count])=><li key={category}><span>{categoryLabels[category]||category}</span><strong>{count}</strong></li>)}</ul> : <p className="muted">Todavía no hay documentos.</p>}{driveFolderUrl?<a className="drive-folder-link" href={driveFolderUrl} target="_blank" rel="noreferrer">Abrir carpeta en Drive ↗</a>:<p className="panel-hint">La carpeta de Drive aparecerá cuando se guarde el primer documento.</p>}</section>
+        <ClientMergeForm clientId={client.id} clients={allClients}/>
       </aside>
       <div className="client-content">
         <section className="section-heading"><div><p className="eyebrow">Archivo asociado</p><h2>Documentos relacionados</h2></div><span className="section-count">{docs.total} total</span></section>
