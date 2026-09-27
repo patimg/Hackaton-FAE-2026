@@ -11,10 +11,10 @@ export default async function Review({searchParams}:{searchParams:Promise<{page?
   const page=Math.max(1,Number.parseInt(query.page || '1',10) || 1);
   const result=await listDocuments(database(),{needsReview:true,page});
   const clients=await listClients();
-  return <><h1>Revisión</h1><p>{result.total} documentos pendientes. La confirmación guarda categoría y etiquetas; no borra ni mueve el original.</p>
+  return <main className="review-workspace"><section className="review-hero"><div><p className="eyebrow">Control de calidad</p><h1>Revisión humana</h1><p className="muted">Confirma las decisiones de la IA y resuelve identidades antes de cerrar cada caso.</p></div><strong className="review-total">{result.total}<span>pendientes</span></strong></section><p className="review-note">La revisión guarda categoría y etiquetas; no borra ni mueve el original.</p>
     {result.items.length===0 && <p className="empty">No hay documentos pendientes de revisión en esta página.</p>}
     {result.items.map(doc=><section className="card" key={`${doc.id}-${doc.version}`} data-document-id={doc.id}><h2><Link href={`/documents/${doc.id}`}>{doc.original_filename}</Link></h2><p>{doc.interaction.client?.display_name || 'Sin asignar'} · {doc.classification_evidence.reason}</p>
       <p className="message">{doc.interaction.message_text}</p>{(doc.interaction.identity_status === 'conflict' || doc.interaction.identity_resolution.missing_identity) && <IdentityResolutionForm interactionId={doc.interaction.id} clients={clients}/>}<ReviewForm document={{id:doc.id,category:doc.category,tags:doc.tags,version:doc.version,identityPending:doc.interaction.identity_status === 'conflict' || doc.interaction.identity_resolution.missing_identity}}/></section>)}
     <div className="actions">{page>1 && <Link href={`/review?page=${page-1}`}>Anterior</Link>}{page*50<result.total && <Link href={`/review?page=${page+1}`}>Siguiente</Link>}</div>
-  </>;
+  </main>;
 }

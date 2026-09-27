@@ -13,15 +13,30 @@ export default async function Home({ searchParams }: { searchParams: WorkspaceSe
   const query = (params.q || '').trim().slice(0, 500);
   const selectedClient = z.uuid().safeParse(params.client).success ? params.client! : null;
   const { db, ai, timezone } = searchDependencies();
-  const [clients, documents] = await Promise.all([
+  const [clients, documents, reviewDocuments] = await Promise.all([
     listClients(),
     listDocuments(db, { page: 1 }),
+    listDocuments(db, { needsReview: true, page: 1 }),
   ]);
   const results = query ? await new SearchService(db, ai, timezone).search(query, selectedClient) : null;
   const recentDocuments = documents.items.slice(0, 8);
 
   return (
-    <div className="organizer">
+    <div className="workspace-shell">
+      <section className="workspace-banner" aria-labelledby="workspace-title">
+        <div>
+          <p className="eyebrow">Centro de control</p>
+          <h1 id="workspace-title">Tu archivo, en orden.</h1>
+          <p className="banner-copy">Explora documentos de Gmail y WhatsApp, revisa los casos pendientes y encuentra contexto en segundos.</p>
+        </div>
+        <div className="banner-signal"><span className="signal-dot" aria-hidden="true" />Canales conectados<span className="signal-detail">Gmail · WhatsApp · Drive</span></div>
+      </section>
+      <section className="metric-strip" aria-label="Resumen del espacio de trabajo">
+        <div className="metric"><span className="metric-label">Clientes</span><strong>{clients.length}</strong><span className="metric-note">Directorio activo</span></div>
+        <div className="metric"><span className="metric-label">Documentos</span><strong>{documents.total}</strong><span className="metric-note">En todos los canales</span></div>
+        <div className={`metric ${reviewDocuments.total ? 'metric-alert' : ''}`}><span className="metric-label">Revisión</span><strong>{reviewDocuments.total}</strong><span className="metric-note">{reviewDocuments.total ? 'Requieren atención' : 'Todo al día'}</span></div>
+      </section>
+      <div className="organizer">
       <aside className="organizer-panel clients-panel" aria-labelledby="clients-heading">
         <div className="panel-heading">
           <div>
@@ -162,6 +177,7 @@ export default async function Home({ searchParams }: { searchParams: WorkspaceSe
           <p className="panel-empty">Los documentos recibidos aparecerán aquí.</p>
         )}
       </aside>
+      </div>
     </div>
   );
 }
