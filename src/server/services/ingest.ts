@@ -6,8 +6,18 @@ import type { FileStorage } from '../providers/storage/provider';
 import { getEventContext } from '../db/documents';
 import { folderFor } from '../files/folder';
 import { AppError } from '../errors';
+import { isDirectWhatsAppChat } from '../../domain/whatsapp';
 export type IngestDependencies={db:SupabaseClient;ai:AIProvider|LegacyAIProvider;storage:FileStorage;staging:FileStorage;timezone:string;confidenceThreshold:number};
 export async function ingestMessage(input:ValidatedMessage,context:{operatorId:string},deps:IngestDependencies){
+  // Guard before reserving an event or resolving/creating any client.
+  if (input.event.source === 'whatsapp') {
+    if (!isDirectWhatsAppChat(input.event.external_thread_id)) {
+      throw new AppError('WHATSAPP_CHAT_NOT_ALLOWED','Solo se reciben archivos de conversaciones individuales de WhatsApp.',422);
+    }
+    if (input.attachments.length === 0) {
+      throw new AppError('WHATSAPP_ATTACHMENT_REQUIRED','El mensaje de WhatsApp debe incluir un archivo compatible.',422);
+    }
+  }
   const {event,attachments}=input;const reservation=await deps.db.rpc('begin_ingestion',{p_event:event,p_sha256:input.payloadHash,p_email:input.email,p_phone:input.phone,p_actor:context.operatorId,p_files:attachments.map(({bytes,...file})=>{void bytes;return file;})});
   if(reservation.error)throw new AppError(reservation.error.code==='23505'?'IDENTITY_CHANGED':'DATABASE_UNAVAILABLE','No se pudo registrar el mensaje; no se inició su procesamiento.',reservation.error.code==='23505'?409:503);
   const {event_id:eventId,created,conflict}=reservation.data as {event_id:string;created:boolean;conflict:boolean};if(conflict)throw new AppError('EVENT_PAYLOAD_CONFLICT','Este ID ya se utilizó con contenido diferente.',409,eventId);
