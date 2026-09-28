@@ -1,0 +1,32 @@
+# Entornos y credenciales locales
+.env
+.env.*
+!.env.example
+credentials/
+secrets/
+*credentials*.json
+*service-account*.json
+*client_secret*.json
+*.pem
+*.key
+
+# Originales, staging y datos locales
+.data/
+supabase/.temp/
+supabase/.branches/
+*.log
+
+# Dependencias y artefactos futuros
+node_modules/
+.next/
+out/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.DS_Store
+
+# Runtime de desarrollo local y reportes
+.tools/
+.verification/
