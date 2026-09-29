@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { isSupportedCountry } from "libphonenumber-js";
 const optionalValue = z.preprocess(value => value === '' ? undefined : value, z.string().min(1).optional());
+const optionalDate = z.preprocess(value => value === '' ? undefined : value, z.iso.date().optional());
 
 export const envSchema = z.object({
   APP_BASE_URL: z.url().default("http://localhost:3000"),
@@ -31,7 +32,8 @@ export const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: optionalValue,
   GOOGLE_REFRESH_TOKEN: optionalValue,
   GMAIL_ACCOUNT_ID: optionalValue,
-  GMAIL_QUERY: z.string().default('is:unread'),
+  GMAIL_QUERY: z.string().default('is:unread category:primary'),
+  GMAIL_START_DATE: optionalDate,
   GMAIL_MAX_MESSAGES: z.coerce.number().int().min(1).max(100).default(25),
 }).superRefine((env, ctx) => {
   if (env.MAX_FILE_BYTES > env.MAX_TOTAL_ATTACHMENT_BYTES || env.MAX_TOTAL_ATTACHMENT_BYTES >= env.MAX_REQUEST_BYTES) {

@@ -17,7 +17,7 @@ npm ci
 Copy-Item .env.example .env.local
 ```
 
-Completa `.env.local` con Supabase, Google OAuth, `GOOGLE_DRIVE_ROOT_FOLDER_ID`, IA, `INGEST_API_TOKEN`, `GMAIL_USER` y `OPERATOR_USER_ID`. No compartas ni publiques este archivo. La cuenta de Supabase debe tener las migraciones aplicadas y el usuario debe estar autorizado como operadora.
+Completa `.env.local` con Supabase, Google OAuth, `GOOGLE_DRIVE_ROOT_FOLDER_ID`, IA, `INGEST_API_TOKEN`, `GMAIL_USER`, `GMAIL_START_DATE` y `OPERATOR_USER_ID`. No compartas ni publiques este archivo. La cuenta de Supabase debe tener las migraciones aplicadas y el usuario debe estar autorizado como operadora.
 
 ```powershell
 npm run supabase:start
@@ -27,7 +27,15 @@ npm run dev
 
 La interfaz privada queda en **http://localhost:3000**. La vista principal reúne el directorio de clientes, la búsqueda IA y los documentos recientes. La revisión manual se mantiene en **/review**.
 
+Los clientes nuevos se crean como `provisional` hasta que una operadora los confirme. El panel principal muestra los clientes `active` y solo una muestra breve de provisionales; la gestión completa está en `/clients`, con filtros para activos, provisionales y archivados. Desde la ficha o el gestor se puede confirmar, archivar o restaurar un registro. Archivar solo lo oculta del directorio activo: conserva interacciones, identidades y documentos.
+
+Si el mismo cliente llegó por Gmail y WhatsApp como dos registros, la ficha permite fusionarlos. El cliente actual de la ficha es el superviviente: sus interacciones, identidades y documentos pasan a él; el contenido de la carpeta antigua de Drive se mueve a la carpeta superviviente y el registro duplicado se elimina de la base. La operación se detiene si Drive no puede mover la carpeta o si existen identidades incompatibles.
+
 La aplicación necesita credenciales reales de Drive e IA para iniciar; ya no existe almacenamiento local de documentos finales ni proveedor determinista en tiempo de ejecución. Los archivos pasan por `.data/staging` mientras se procesan, se eliminan de ahí tras guardarse correctamente en Drive y se conservan si el procesamiento falla para permitir su revisión.
+
+Los fallos temporales de Drive o dependencias quedan marcados como `retryable_failed`. Si el mismo conector vuelve a entregar el evento, el pipeline reutiliza staging y evita duplicar documentos ya almacenados. La resolución de identidades pendientes se realiza desde `/review`; por ahora actualiza la asociación en la base, pero no mueve físicamente originales antiguos dentro de Drive.
+
+`GMAIL_START_DATE` es opcional y usa formato `AAAA-MM-DD`. Configúralo antes de la primera sincronización para excluir mensajes no leídos anteriores a esa fecha. La consulta predeterminada usa `category:primary`, pero no usa `has:attachment`: también pueden existir interacciones válidas sin archivos. La clasificación de relevancia del correo y la sincronización incremental durable siguen pendientes.
 
 ## Estado operativo verificado
 
@@ -39,12 +47,13 @@ Esta comprobación confirma el procesamiento de esos mensajes, no que los worker
 
 ## Conectores
 
-WhatsApp solo importa imágenes y documentos compatibles recibidos en conversaciones
-individuales. Ignora grupos, estados, difusiones, canales, mensajes propios y texto
-sin adjuntos antes de descargar archivos o crear clientes. El servidor también
-rechaza eventos de WhatsApp sin un chat individual o sin archivos. El texto que
-acompaña un archivo se conserva como contexto. Esta regla no elimina registros
-importados anteriormente; reinicia el listener para activar el filtro.
+WhatsApp importa imágenes y documentos compatibles recibidos en conversaciones
+individuales. También conserva mensajes de texto de chats individuales como
+interacciones sin crear documentos ni carpetas en Drive. Ignora grupos, estados,
+difusiones, canales y mensajes propios antes de crear clientes o descargar archivos.
+El servidor vuelve a validar que el evento pertenezca a un chat individual. El texto
+que acompaña un archivo se conserva como contexto. Esta regla no elimina registros
+importados anteriormente; reinicia el listener para activarla.
 
 Consulta [docs/INTEGRATIONS_SETUP.md](docs/INTEGRATIONS_SETUP.md) para crear las credenciales OAuth y vincular WhatsApp.
 
@@ -63,6 +72,7 @@ El token interno de ingestión autoriza al listener de WhatsApp; mantenlo privad
 ## Comprobaciones
 
 ```powershell
+npm run ai:check
 npm run lint
 npm run typecheck
 npm test

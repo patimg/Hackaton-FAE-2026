@@ -20,10 +20,14 @@ flowchart LR
 ```
 
 - `scripts/sync-gmail.ts` consulta mensajes sin leer, descarga los adjuntos y llama directamente al servicio de ingestión. Al completar un mensaje, lo etiqueta como procesado y lo marca como leído.
-- `scripts/whatsapp-listener.ts` conserva la sesión local de Baileys, transforma mensajes entrantes y adjuntos en eventos, y los envía con `INGEST_API_TOKEN` al endpoint interno.
+- `scripts/whatsapp-listener.ts` conserva la sesión local de Baileys, transforma mensajes entrantes y adjuntos en eventos, y los envía con `INGEST_API_TOKEN` al endpoint interno. Un texto de chat individual puede crear una interacción sin documentos; solo los adjuntos compatibles llegan a clasificación y Drive.
 - `src/server/services/ingest.ts` es el pipeline común: valida el evento, resuelve identidades de email/teléfono, registra interacciones/documentos, clasifica y guarda los originales en Drive.
 - `.data/staging` conserva los originales durante el procesamiento; se eliminan tras confirmar el guardado en Drive y permanecen disponibles localmente si el evento falla.
+- Si Drive o una dependencia temporal falla, el evento queda como `retryable_failed`. Una nueva entrega del mismo evento puede reanudarlo: reutiliza staging y omite documentos ya almacenados para evitar duplicados.
 - `/` consulta clientes y documentos recientes y procesa `q` con `SearchService`; los resultados se obtienen mediante la RPC parametrizada `search_documents`. Las rutas antiguas `/clients`, `/documents` y `/search` redirigen al panel; los detalles de clientes/documentos y `/review` siguen disponibles.
+- Los clientes tienen ciclo de vida `provisional`, `active` o `archived`. El cambio de estado es reversible y no elimina el historial; el panel muestra activos y una muestra breve de provisionales, mientras `/clients` ofrece la gestión completa por estado.
+- La fusión manual se ejecuta desde la ficha del cliente superviviente. Primero consolida el contenido de la carpeta secundaria en Drive y después la RPC `merge_clients` mueve identidades, interacciones, solicitudes, órdenes y rutas lógicas antes de eliminar el cliente duplicado. No se fusiona automáticamente por nombre o canal.
+- Cada fusión crea un registro en `client_merge_operations`: `pending`, `drive_completed`, `completed` o `failed`. Esto no vuelve transaccionales Drive y PostgreSQL, pero evita perder el estado y permite recuperar una operación interrumpida.
 
 ## Contrato de entrada
 
@@ -33,7 +37,7 @@ El contrato admite `source: "gmail" | "whatsapp"`, mensaje con o sin adjuntos, f
 
 La RPC `begin_ingestion` registra de forma transaccional la idempotencia del evento, el resultado de resolución de identidad, la interacción y las filas de documentos. La clave idempotente es `(source, source_account_id, external_message_id)`. Un reenvío idéntico devuelve los mismos IDs; el mismo ID con contenido diferente devuelve conflicto.
 
-La verificación operativa del 26 de septiembre de 2026 confirmó un adjunto Markdown de Gmail y una imagen de WhatsApp almacenados en Drive. El evento de WhatsApp quedó asociado a un cliente provisional porque no había un teléfono verificable que coincidiera con el cliente de Gmail; la identidad provisional debe resolverse manualmente si se confirma que son la misma persona.
+La verificación operativa del 26 de septiembre de 2026 confirmó un adjunto Markdown de Gmail y una imagen de WhatsApp almacenados en Drive. El evento de WhatsApp quedó asociado a un cliente provisional porque no había un teléfono verificable que coincidiera con el cliente de Gmail; ahora puede asignarse manualmente a un cliente existente desde `/review`. Esa operación corrige la asociación en la base, pero no mueve retroactivamente el archivo físico de Drive.
 
 ## Seguridad y datos
 

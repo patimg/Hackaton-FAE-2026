@@ -28,6 +28,7 @@ const testClientName=`TEST-INGEST-${testNamespace}`;
 const localTestRoot=join(tmpdir(),`fae-ingest-${testNamespace}`);
 const testClientIds:string[]=[];
 const testFileStorage=new LocalFileStorage(join(localTestRoot,'files'));
+class FailingStorage extends LocalFileStorage { async ensureStored(input:Parameters<LocalFileStorage['ensureStored']>[0]):Promise<never>{void input;throw new Error('temporary storage failure');} }
 const deps:IngestDependencies={db,ai:new DeterministicAIProvider(),storage:testFileStorage,staging:new LocalFileStorage(join(localTestRoot,'staging')),timezone:env.APP_TIMEZONE,confidenceThreshold:env.CLASSIFICATION_CONFIDENCE_THRESHOLD};
 const context={operatorId:env.OPERATOR_USER_ID};
 before(async()=>{
@@ -99,11 +100,35 @@ test('pipeline: cliente existente por email, original persistido, duplicado y co
   await assert.rejects(ingest({...event,text:event.text+' distinto'},files),error=>error instanceof AppError && error.code==='EVENT_PAYLOAD_CONFLICT');
   assert.deepEqual(await counts(),before);
 });
+test('pipeline: un fallo de almacenamiento se puede reintentar sin duplicar documentos',async()=>{
+  const data=await message();
+  await assert.rejects(ingest(data.event,data.files,{...deps,storage:new FailingStorage(join(localTestRoot,'failed-files'))}),error=>error instanceof AppError && error.code==='STORAGE_FAILED');
+  const savedEvent=await db.from('processed_events').select('id,status').eq('external_message_id',data.event.external_message_id).single();
+  assert.equal(savedEvent.error,null);assert.equal(savedEvent.data?.status,'retryable_failed');
+  const retried=await ingest(data.event,data.files);
+  assert.equal(retried.result.documents.length,1);assert.equal(retried.result.documents[0].storage_status,'stored');
+  const documents=await db.from('documents').select('id').eq('interaction_id',retried.result.interaction_id);assert.equal(documents.error,null);assert.equal(documents.data.length,1);
+});
 test('pipeline: teléfono existente y mensaje sin adjuntos',async()=>{
-  const {event}=await message();event.source='whatsapp';event.sender={display_name:`${testClientName}-contact`,email:null,phone:testPhone};event.attachments=[];
+  const {event}=await message();event.sender={display_name:`${testClientName}-contact`,email:null,phone:testPhone};event.attachments=[];
   const result=await ingest(event,[]);assert.equal(result.result.client?.id,testClientIds[0]);assert.equal(result.result.documents.length,0);
   const saved=await db.from('interactions').select('message_text,external_message_id').eq('id',result.result.interaction_id).single();
   assert.equal(saved.data?.message_text,event.text);assert.equal(saved.data?.external_message_id,event.external_message_id);
+});
+test('pipeline: WhatsApp de chat individual conserva texto sin crear documentos',async()=>{
+  const {event}=await message();event.source='whatsapp';event.external_thread_id='56987654321@s.whatsapp.net';event.sender={display_name:`${testClientName}-whatsapp`,email:null,phone:testPhone};event.attachments=[];
+  const result=await ingest(event,[]);
+  assert.equal(result.result.client?.id,testClientIds[0]);assert.equal(result.result.documents.length,0);
+  const saved=await db.from('interactions').select('source,message_text').eq('id',result.result.interaction_id).single();
+  assert.equal(saved.data?.source,'whatsapp');assert.equal(saved.data?.message_text,event.text);
+});
+test('resolución manual de identidad limpia la cola de pendientes',async()=>{
+  const {event}=await message();event.sender={display_name:`${testClientName}-manual`,email:null,phone:null};event.attachments=[];
+  const result=await ingest(event,[]);
+  const resolved=await db.rpc('resolve_interaction_identity',{p_interaction_id:result.result.interaction_id,p_client_id:testClientIds[0],p_actor:env.OPERATOR_USER_ID});
+  assert.equal(resolved.error,null);
+  const interaction=await db.from('interactions').select('identity_status,identity_resolution').eq('id',result.result.interaction_id).single();
+  assert.equal(interaction.error,null);assert.equal(interaction.data?.identity_status,'resolved');assert.equal(interaction.data?.identity_resolution.missing_identity,false);
 });
 test('pipeline: nuevo cliente y mismo nombre con otra identidad no se fusionan',async()=>{
   const {event,files}=await message('receipt');event.sender={display_name:`${testClientName}-new`,email:`itest-new-${randomUUID()}@example.test`,phone:null};

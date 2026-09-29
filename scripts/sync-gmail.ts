@@ -5,8 +5,8 @@ import { GmailProvider } from '@/server/providers/gmail/provider';
 import { ingestDependencies } from '@/server/services/dependencies';
 import { ingestMessage, type IngestDependencies } from '@/server/services/ingest';
 
-async function poll(provider: GmailProvider, accountId: string, query: string, max: number, dependencies: IngestDependencies) {
-  const messages = await provider.listUnread(query, max);
+async function poll(provider: GmailProvider, accountId: string, query: string, max: number, startDate: string | undefined, dependencies: IngestDependencies) {
+  const messages = await provider.listUnread(query, max, startDate);
   for (const message of messages) {
     if (!message.id) continue;
     try {
@@ -41,7 +41,7 @@ async function main() {
   const dependencies = ingestDependencies();
   await dependencies.storage.assertReady();
   do {
-    await poll(provider, accountId, query, max, dependencies);
+    await poll(provider, accountId, query, max, env.GMAIL_START_DATE, dependencies);
     if (process.argv.includes('--once')) break;
     await new Promise(resolve => setTimeout(resolve, env.GMAIL_POLL_INTERVAL_MS));
   } while (true);

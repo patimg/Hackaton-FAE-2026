@@ -8,6 +8,8 @@ Supabase/PostgreSQL es la fuente de verdad para clientes, identidades, interacci
 
 Gmail usa Gmail API con OAuth y procesa mensajes sin leer. WhatsApp usa Baileys como proceso independiente autenticado con `INGEST_API_TOKEN`. No hay ruta, componente ni cuenta de simulación.
 
+Gmail combina `GMAIL_QUERY` con `GMAIL_START_DATE` cuando existe. La fecha limita el backlog inicial, mientras `category:primary` reduce promociones y redes sociales. No se usa `has:attachment` como regla global: los correos sin archivos pueden ser interacciones válidas. La clasificación de relevancia y la sincronización durable por `historyId` siguen pendientes.
+
 ## Un contrato y un pipeline para los conectores
 
 El evento multipart normalizado es validado una vez. Gmail invoca el servicio directamente y WhatsApp usa `POST /api/v1/ingest`; ambos comparten resolución de identidad, idempotencia, clasificación y almacenamiento.
@@ -15,6 +17,8 @@ El evento multipart normalizado es validado una vez. Gmail invoca el servicio di
 ## Identidad exacta; ambigüedad visible
 
 Email y teléfono se normalizan y se comparan exactamente. El nombre no fusiona clientes. Contactos contradictorios o insuficientes quedan para revisión humana.
+
+Un remitente nuevo puede crear un cliente `provisional`, pero no se considera cliente activo hasta confirmación manual. `archived` es un estado reversible para ocultar ruido histórico sin eliminar interacciones, identidades ni documentos.
 
 ## Idempotencia por mensaje y hash por archivo
 
@@ -30,9 +34,16 @@ Gmail puede etiquetar archivos Markdown como `text/markdown`. Para mantener un �
 
 La IA entrega categorías, resúmenes y un plan de búsqueda validado. La base ejecuta SQL parametrizado; el modelo no genera consultas ejecutables, permisos ni rutas. Los resultados inciertos se pueden revisar manualmente.
 
+
+## Validación tolerante para el plan de búsqueda (no para la clasificación)
+
+`searchPlanSchema` valida por objeto abierto (no estricto): una clave extra que el modelo agregue se descarta sin invalidar el resto, porque `SearchService` solo lee el plan por clave nombrada y la RPC `search_documents` es parametrizada — una clave adicional nunca llega a ejecutarse. Esto evita que proveedores/modelos menos obedientes con el formato exacto (ej. modelos pequeños vía Groq) caigan siempre al modo de coincidencias por texto. `classificationSchema` sí se mantiene estricto: sus resultados se guardan tal cual en `documents`, así que una clave inesperada ahí sí debe rechazarse. Cualquier fallo real de interpretación IA en búsqueda queda registrado en consola del servidor (antes se descartaba en silencio).
+
 ## Staging temporal con retención ante fallos
 
 Los bytes se conservan en staging durante el procesamiento y se retiran al confirmar su almacenamiento en Drive. Si la operación falla, el original permanece disponible localmente para investigar el evento.
+
+Los fallos temporales quedan en `retryable_failed`. Reintentar el mismo evento reutiliza la copia de staging y omite documentos ya almacenados. La operación sigue dependiendo de que el conector vuelva a entregar el mismo payload; no existe todavía un worker independiente de recuperación.
 
 ## Baileys es una dependencia no oficial, no una API de producción
 

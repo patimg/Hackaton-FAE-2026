@@ -39,14 +39,13 @@ test('ignora texto sin adjuntos, archivos no compatibles y mensajes propios', ()
   assert.equal(shouldIngestWhatsAppMessage(own), false);
 });
 
-test('el servidor bloquea grupos y texto sin adjuntos antes de acceder a dependencias', async () => {
+test('el servidor bloquea grupos antes de acceder a dependencias y permite texto individual', async () => {
   const deps = new Proxy({} as IngestDependencies, {
     get() { throw new Error('No debe acceder a DB, IA ni almacenamiento'); },
   });
   for (const [jid, withFiles, expected] of [
     ['120363123456@g.us', true, 'WHATSAPP_CHAT_NOT_ALLOWED'],
     ['120363123456@g.us', false, 'WHATSAPP_CHAT_NOT_ALLOWED'],
-    ['56987654321@s.whatsapp.net', false, 'WHATSAPP_ATTACHMENT_REQUIRED'],
   ] as const) {
     const { event, files } = await createTestMessage();
     event.source = 'whatsapp';
@@ -56,4 +55,11 @@ test('el servidor bloquea grupos y texto sin adjuntos antes de acceder a depende
     await assert.rejects(ingestMessage(input, { operatorId: 'unused' }, deps),
       (error: unknown) => error instanceof AppError && error.code === expected);
   }
+  const { event } = await createTestMessage();
+  event.source = 'whatsapp';
+  event.external_thread_id = '56987654321@s.whatsapp.net';
+  event.attachments = [];
+  const textDeps = { rpc: async () => ({ error: new Error('test stop') }) } as unknown as IngestDependencies;
+  await assert.rejects(ingestMessage(await parseIngest(requestFor(event, []), limits), { operatorId: 'unused' }, { db: textDeps } as unknown as IngestDependencies),
+    (error: unknown) => error instanceof AppError && error.code === 'DATABASE_UNAVAILABLE');
 });

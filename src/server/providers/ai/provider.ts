@@ -7,7 +7,10 @@ export const classificationSchema = z.strictObject({
 });
 export type Classification = z.infer<typeof classificationSchema>;
 export type ClassificationInput = { document_id:string; filename:string; mime_type:string; document_text:string|null; message_text:string; subject:string|null; source:'gmail'|'whatsapp'; client_name:string|null };
-export const searchPlanSchema = z.strictObject({
+// object (no strictObject): el plan solo se lee por clave nombrada (ver SearchService.search),
+// así que una clave extra que un modelo menos obediente agregue no representa riesgo y no debe
+// tumbar la interpretación completa. Los tipos/enums de cada campo declarado siguen validados.
+export const searchPlanSchema = z.object({
   clientName:z.string().min(1).max(150).nullable(), category:z.enum(categories).nullable(), sourceChannel:z.enum(['gmail','whatsapp']).nullable(),
   dateFrom:z.iso.date().nullable(), dateTo:z.iso.date().nullable(), keywords:z.array(z.string().min(1).max(80)).max(8), freeText:z.string().min(1).max(500).nullable(),
 });

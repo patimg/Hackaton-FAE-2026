@@ -50,7 +50,16 @@ AI_BASE_URL=https://api.openai.com/v1
 GMAIL_USER=tu-cuenta@gmail.com
 GMAIL_ACCOUNT_ID=tu-cuenta@gmail.com
 INGEST_API_TOKEN=un-token-largo-y-aleatorio
+GMAIL_START_DATE=2026-09-27
 ```
+
+Comprueba la conexión antes de iniciar los workers:
+
+```powershell
+npm run ai:check
+```
+
+El diagnóstico distingue errores de autenticación, modelo inexistente, límite de uso, timeout y disponibilidad del proveedor.
 
 Con Next.js, Supabase y las credenciales cargadas, ejecuta:
 
@@ -66,6 +75,8 @@ Para procesar una sola pasada:
 npm run sync:gmail -- --once
 ```
 
+`GMAIL_START_DATE` es una fecha opcional `AAAA-MM-DD`; el worker la convierte en `after:AAAA/MM/DD` y la combina con `GMAIL_QUERY`. Úsala antes de la primera sincronización para excluir años de mensajes no leídos acumulados. `GMAIL_QUERY` por defecto es `is:unread category:primary`; no se añade `has:attachment`, porque también pueden interesar correos sin archivos. La clasificación de relevancia del correo y la sincronización incremental durable siguen pendientes.
+
 `GMAIL_POLL_INTERVAL_MS` controla el intervalo del worker continuo, con un mínimo de un segundo.
 Para probar un remitente sin procesar todo el backlog, puedes acotar la búsqueda y el máximo; Gmail marcará como leído el correo si la ingestión completa:
 
@@ -74,6 +85,12 @@ npm run sync:gmail -- --once --max=1 --query="in:inbox from:remitente@example.co
 ```
 
 Evita iniciar el worker continuo con una búsqueda amplia si no quieres importar todo el historial que coincida con ella. La verificación local del 26 de septiembre de 2026 procesó de forma dirigida un mensaje con adjunto Markdown y confirmó que el documento se guardó en Drive. El MIME `text/markdown` se valida como UTF-8 y se ingiere como texto plano; otros MIME no admitidos o texto inválido producen un error y el mensaje permanece sin leer.
+
+En la primera conexión de una cuenta con muchos no leídos acumulados, el conector recorrerá todos los mensajes que coincidan con `GMAIL_QUERY` (incluidos boletines/promociones, aunque no generen ningún archivo en Drive por no traer adjunto admitido, sí crean una interacción y potencialmente un cliente provisional visibles en el panel). Se recomienda ajustar `GMAIL_QUERY` para acotar esto usando los propios operadores de búsqueda de Gmail, por ejemplo:
+```
+GMAIL_QUERY=is:unread category:primary after:2026/09/27
+```
+`category:primary` usa la clasificación de Gmail para excluir promociones/redes sociales/foros; `after:AAAA/MM/DD` evita procesar el backlog histórico de no leídos, dejando solo lo que llegue desde esa fecha. No hay actualmente un mecanismo automático de "solo mensajes nuevos" (marca de agua persistida) más allá de esto — es responsabilidad de quien configura `GMAIL_QUERY`.
 
 ## 3. WhatsApp por QR
 
@@ -96,7 +113,7 @@ Inicia:
 npm run dev:whatsapp
 ```
 
-Escanea el QR desde WhatsApp > Dispositivos vinculados. La sesión se conserva en `.data/whatsapp-auth`, que está ignorado por Git. El listener envía texto y adjuntos compatibles (PDF, JPEG, PNG y texto plano) al endpoint de ingestión; los formatos no admitidos se omiten.
+Escanea el QR desde WhatsApp > Dispositivos vinculados. La sesión se conserva en `.data/whatsapp-auth`, que está ignorado por Git. El listener envía texto y adjuntos compatibles (PDF, JPEG, PNG y texto plano) al endpoint de ingestión. Un mensaje de texto de un chat individual se conserva como interacción sin crear documento ni carpeta en Drive; los formatos no admitidos se omiten y grupos, estados, canales y mensajes propios se ignoran.
 
 La comprobación local de esa fecha confirmó que una imagen recibida por WhatsApp llegó a Google Drive. En esa prueba el remitente no proporcionó un número verificable, por lo que el registro se vinculó a un cliente provisional y no se fusionó automáticamente con el cliente de Gmail. Confirma/actualiza la identidad del cliente desde el flujo de revisión antes de asumir que dos canales pertenecen a la misma persona.
 

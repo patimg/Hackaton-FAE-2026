@@ -18,6 +18,7 @@
     "supabase:stop": "supabase stop",
     "db:migrate": "supabase migration up --local",
     "auth:google": "tsx scripts/get-google-tokens.ts",
+    "ai:check": "tsx scripts/ai-check.ts",
     "sync:gmail": "node --conditions=react-server --import tsx scripts/sync-gmail.ts",
     "dev:whatsapp": "tsx scripts/whatsapp-listener.ts"
   },

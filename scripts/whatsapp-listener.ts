@@ -94,7 +94,7 @@ async function createForm(message: WAMessage, socket: ReturnType<typeof makeWASo
     }
   }
   const text = messageText(message).slice(0, 10000);
-  if (attachments.length === 0) return null;
+  if (attachments.length === 0 && !text.trim()) return null;
   const remoteJid = message.key.remoteJid || 'unknown';
   const event = {
     schema_version: '1' as const,

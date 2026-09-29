@@ -32,6 +32,13 @@ Integración y E2E requieren Supabase local y credenciales de operadora. Las pru
 
 ## Trabajo técnico pendiente
 
+- Revisar en lote los clientes provisionales históricos y confirmar o archivar los que ya existían antes de la separación visual.
+- Añadir pruebas del worker Gmail para comprobar la creación y aplicación de `FAE_PROCESSED`.
+- Añadir una prueba de integración de búsqueda con documentos en los límites de “hoy” para proteger la conversión de zona horaria. Se creo un archivo .sql con la logica base
+- Mover físicamente en Drive los originales después de resolver una identidad; la resolución actual corrige la relación de base, pero conserva la ubicación física original.
+- Añadir una pantalla/comando de recuperación para operaciones de fusión `drive_completed` o `failed`; la operación ya queda registrada y permite investigar antes de reanudar.
+- Sincronización incremental durable de Gmail mediante `historyId`; `GMAIL_START_DATE` limita el backlog inicial, pero no reemplaza una marca de agua persistida.
+- Clasificador de relevancia para Gmail que reduzca newsletters y correos comerciales sin eliminar interacciones de texto válidas.
 - Recuperación/reintentos durables para fallos parciales de base de datos, IA o Drive.
 - Extracción de texto/OCR de documentos escaneados y tratamiento explícito de formatos no admitidos.
 - Migración de Baileys a WhatsApp Business Cloud API para despliegues de producción.
